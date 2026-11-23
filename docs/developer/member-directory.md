@@ -25,6 +25,19 @@ The seeder creates the form once from `directory_preset` (`DirectoryPresets`), t
 
 `MemberMatcher::find($organisationId, $data)` returns existing records that match any key of `match_keys`, with the keys each matched on. Values are compared case-insensitively; emails lower-case and phones as digits (`MemberValue`).
 
+## Applications and approval
+
+`MembershipService`:
+
+- `apply($user, $organisation, $data, $proofs)`: checks the directory fields (`DirectoryFields::rulesFor`) and `ProofFields::rules()`, then creates a `Membership` (`applied`), or sends an application on hold back to `applied`. Refused while one is waiting or once approved; after a rejection it creates a new one.
+- `matches($membership)`: `MemberMatcher::find()` on the application, flagging records linked to another account.
+- `approve($membership, $adminId, ?$linkRecordUid, ?$note)`: links the account to the record (same organisation, not linked to someone else), or creates one from the application (source `registration`, values normalised, meta fields written).
+- `hold(...)` / `reject(...)` need a note, which the applicant sees.
+
+Moves allowed (`Membership::TRANSITIONS`): applied → on hold / approved / rejected; on hold → applied / approved / rejected. Each move adds a `membership_status_histories` row.
+
+Approval status is separate from payment and validity, which come with membership periods (step 3).
+
 ## Bulk upload
 
 `MemberImportService`:

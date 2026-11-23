@@ -54,6 +54,11 @@ class CommunitySeeder extends BaseSeeder
                 ],
             ],
             [
+                'icon' => 'fas fa-user-check',
+                'label' => 'Applications',
+                'route' => 'community.applications.index',
+            ],
+            [
                 'icon' => 'fas fa-file-import',
                 'label' => 'Bulk upload',
                 'route' => 'community.members.import.index',

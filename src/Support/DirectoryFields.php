@@ -5,6 +5,7 @@ namespace Iquesters\Community\Support;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Iquesters\Community\Config\CommunityConf;
 use Iquesters\Community\Enums\Module;
 use Iquesters\Foundation\Support\ConfProvider;
@@ -79,6 +80,44 @@ class DirectoryFields
     public static function find(string $id): ?array
     {
         return collect(self::all())->firstWhere('id', $id);
+    }
+
+    /** Validation rules for one directory field (bulk upload rows and applications). */
+    public static function rulesFor(array $field): array
+    {
+        $definition = $field['field'];
+        $rules = [$field['required'] ? 'required' : 'nullable'];
+
+        switch ($field['type']) {
+            case 'email':
+                $rules[] = 'email';
+                break;
+            case 'number':
+                $rules[] = 'numeric';
+                break;
+            case 'date':
+                $rules[] = 'date';
+                break;
+            case 'select':
+            case 'radio':
+                if ($field['options'] !== []) {
+                    $rules[] = Rule::in($field['options']);
+                }
+                break;
+        }
+
+        if ($field['type'] === 'number') {
+            if (isset($definition['min'])) {
+                $rules[] = 'min:'.$definition['min'];
+            }
+            if (isset($definition['max'])) {
+                $rules[] = 'max:'.$definition['max'];
+            }
+        } elseif (isset($definition['maxLength'])) {
+            $rules[] = 'max:'.(int) $definition['maxLength'];
+        }
+
+        return $rules;
     }
 
     /** Entity meta_fields for member_records, so the entity API saves the directory's meta fields. */

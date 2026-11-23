@@ -3,9 +3,13 @@
 namespace Iquesters\Community\Tests\Feature;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Iquesters\Community\Database\Seeders\CommunitySeeder;
 use Iquesters\Community\Models\MemberRecord;
 use Iquesters\Community\Services\Import\MemberImportService;
+use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Tests\TestCase;
+use Iquesters\Organisation\Models\Organisation;
 
 /**
  * Bulk upload with the default (alumni) directory: name, email, phone, batch, section, roll number, house.
@@ -166,7 +170,7 @@ class MemberImportTest extends TestCase
     public function test_records_are_listed_through_the_entity_api_by_organisation(): void
     {
         // Without organisation's scope resolver the entity API refuses tables with organisation_id.
-        $this->seed(\Iquesters\Community\Database\Seeders\CommunitySeeder::class);
+        $this->seed(CommunitySeeder::class);
         $organisation = $this->makeOrganisation();
         MemberRecord::create(['organisation_id' => $organisation->id, 'name' => 'Ann Roy']);
 
@@ -177,11 +181,11 @@ class MemberImportTest extends TestCase
 
     public function test_the_directory_form_has_the_organisation_select_but_the_upload_does_not(): void
     {
-        $this->seed(\Iquesters\Community\Database\Seeders\CommunitySeeder::class);
+        $this->seed(CommunitySeeder::class);
 
-        $form = json_decode(\Illuminate\Support\Facades\DB::table('form_schemas')->where('slug', 'community-member-record')->value('schema'), true);
+        $form = json_decode(DB::table('form_schemas')->where('slug', 'community-member-record')->value('schema'), true);
         $this->assertSame('organisation_id', $form['fields'][0]['id']);
-        $this->assertNotContains('organisation_id', array_column(\Iquesters\Community\Support\DirectoryFields::all(), 'id'));
+        $this->assertNotContains('organisation_id', array_column(DirectoryFields::all(), 'id'));
     }
 
     public function test_without_an_organisation_the_pages_explain_it(): void
@@ -206,11 +210,11 @@ class MemberImportTest extends TestCase
     public function test_the_seeder_creates_a_default_organisation_in_single_mode_only_when_none_exists(): void
     {
         config(['app.name' => 'TTVians Alumni']);
-        $this->seed(\Iquesters\Community\Database\Seeders\CommunitySeeder::class);
-        $this->assertSame(['TTVians Alumni'], \Iquesters\Organisation\Models\Organisation::pluck('name')->all());
+        $this->seed(CommunitySeeder::class);
+        $this->assertSame(['TTVians Alumni'], Organisation::pluck('name')->all());
 
         // Seeding again doesn't add another.
-        $this->seed(\Iquesters\Community\Database\Seeders\CommunitySeeder::class);
-        $this->assertSame(1, \Iquesters\Organisation\Models\Organisation::count());
+        $this->seed(CommunitySeeder::class);
+        $this->assertSame(1, Organisation::count());
     }
 }

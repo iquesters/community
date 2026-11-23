@@ -5,7 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
+### Added (step 2: registration and approval)
+- **Apply** (`/community/apply`, any signed-in user): the directory fields (same rules as bulk upload) plus proof: identifiers (e.g. registration number) and files. In multiple-organisation mode the person picks the organisation first. The page then shows the application's status, the administrator's note, and the form again when it is on hold or was rejected.
+- **Approval queue** (Community → Applications, `ensure.admin`): tabs Waiting / Applied / On hold / Approved / Rejected / All; each application with its data, proof and **matching records** (by the match keys), and:
+  - **Approve**, linking the account to a matching record (the school's data stays as it is), or creating a record from the application (source `registration`);
+  - **Hold** with a note: the applicant updates the application and sends it again;
+  - **Reject** with a note; the person can apply again with a new application.
+  - A record already linked to another account can't be chosen.
+- **Statuses** `applied`, `on_hold`, `approved`, `rejected`, with allowed moves only; every change is kept (who, when, note). Payment comes after approval, in a later step.
+- Tables `memberships` (one per person per organisation), `membership_status_histories`, `application_proofs`; models `Membership`, `MembershipStatusHistory`, `ApplicationProof`; `MembershipService`.
+- **Proof files are private:** stored on the `local` disk under `community/proofs/{membership}`, downloaded only by the applicant or a super-admin (`/community/proofs/{uid}`; anyone else gets 404).
+- Settings: `self_registration` (default on) and `proof_fields` (registration number, and a PDF/JPG/PNG up to 5 MB, both optional by default).
+- Directory validation rules moved to `DirectoryFields::rulesFor()`, shared by bulk upload and applications.
+
+### Added (step 1: directory and bulk upload)
 - **Member directory:** `member_records` (one row per person, with or without a login: organisation, optional user, name, email, phone, source, status) and `member_record_metas` for the app's own fields. Models `MemberRecord` and `MemberRecordMeta`.
 - **Configurable directory fields:** the fields come from the directory form schema (`community-member-record`). The seeder creates it once from a preset (`alumni`: batch, section, roll number, house; `club`; `association`); after that admins edit it in the form builder. The same fields drive the form, the bulk upload columns, validation and matching.
 - **Bulk upload** (Community → Bulk upload; `ensure.admin`):

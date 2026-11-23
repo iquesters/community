@@ -35,6 +35,15 @@ class CommunityConf extends BaseConf
     /** Most rows one bulk upload may have. */
     protected int $import_max_rows;
 
+    /** Whether people can apply for membership themselves (Apply page). */
+    protected bool $self_registration;
+
+    /**
+     * Proof asked for when applying. Each: id, label, kind (identifier | file),
+     * required, and for files: types (comma-separated extensions) and max_kb.
+     */
+    protected array $proof_fields;
+
     protected function prepareDefault(BaseConf $default_values)
     {
         $default_values->organisation_mode = 'single';
@@ -45,6 +54,11 @@ class CommunityConf extends BaseConf
         $default_values->directory_preset = 'alumni';
         $default_values->match_keys = 'email,phone,batch+name';
         $default_values->import_max_rows = 5000;
+        $default_values->self_registration = true;
+        $default_values->proof_fields = [
+            ['id' => 'registration_number', 'label' => 'School registration number', 'kind' => 'identifier', 'required' => false],
+            ['id' => 'proof_document', 'label' => 'Proof (e.g. leaving certificate or old ID card)', 'kind' => 'file', 'required' => false, 'types' => 'pdf,jpg,jpeg,png', 'max_kb' => 5120],
+        ];
     }
 
     protected function rules(): array
@@ -58,6 +72,8 @@ class CommunityConf extends BaseConf
             'directory_preset' => 'in:alumni,club,association',
             'match_keys' => 'string|max:255',
             'import_max_rows' => 'integer|min:1|max:50000',
+            'self_registration' => 'boolean',
+            'proof_fields' => 'array|max:10',
         ];
     }
 }

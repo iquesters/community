@@ -6,7 +6,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use Iquesters\Community\Models\MemberRecord;
 use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\MemberMatcher;
@@ -54,7 +53,7 @@ class MemberImportService
 
         $max = (int) DirectoryFields::conf()->import_max_rows ?: 5000;
         if (count($lines) > $max) {
-            throw new \InvalidArgumentException("The file has ".count($lines)." rows; at most {$max} can be uploaded at once.");
+            throw new \InvalidArgumentException('The file has '.count($lines)." rows; at most {$max} can be uploaded at once.");
         }
 
         [$columns, $unknown] = $this->mapColumns($header, $fields);
@@ -308,48 +307,11 @@ class MemberImportService
             if (! array_key_exists($field['id'], $data) && ! $field['required']) {
                 continue;
             }
-            $rules[$field['id']] = $this->rules($field);
+            $rules[$field['id']] = DirectoryFields::rulesFor($field);
             $attributes[$field['id']] = $field['label'];
         }
 
         return Validator::make($data, $rules, [], $attributes)->errors()->all();
-    }
-
-    private function rules(array $field): array
-    {
-        $definition = $field['field'];
-        $rules = [$field['required'] ? 'required' : 'nullable'];
-
-        switch ($field['type']) {
-            case 'email':
-                $rules[] = 'email';
-                break;
-            case 'number':
-                $rules[] = 'numeric';
-                break;
-            case 'date':
-                $rules[] = 'date';
-                break;
-            case 'select':
-            case 'radio':
-                if ($field['options'] !== []) {
-                    $rules[] = Rule::in($field['options']);
-                }
-                break;
-        }
-
-        if ($field['type'] === 'number') {
-            if (isset($definition['min'])) {
-                $rules[] = 'min:'.$definition['min'];
-            }
-            if (isset($definition['max'])) {
-                $rules[] = 'max:'.$definition['max'];
-            }
-        } elseif (isset($definition['maxLength'])) {
-            $rules[] = 'max:'.(int) $definition['maxLength'];
-        }
-
-        return $rules;
     }
 
     private function summary(array $rows): array
