@@ -3,32 +3,23 @@
 namespace Iquesters\Community\Support;
 
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Iquesters\Community\Models\Membership;
 use Iquesters\Organisation\Models\Organisation;
 
 /**
  * Who may manage which organisations' members (Members, Applications, Bulk upload).
  *
+ * The organisation module decides (OrganisationAccess), so every module agrees:
  * - super-admin: every organisation;
- * - organisation admin: their organisations only. Track B's TenantAuthorization
- *   decides this from explicit assignments (organisation_role_assignments).
- *   Until that table exists, a user with the "admin" role is admin of the
- *   organisations they belong to (logged as a warning). When the table is
- *   added, the strict rule applies without any code change.
+ * - org-admin: only the organisations where their role is org-admin. An
+ *   org-admin of one school who is a member of another is only a member there.
  */
 class CommunityAccess
 {
-    public const ASSIGNMENTS_TABLE = 'organisation_role_assignments';
-
-    public const TENANT_POLICY = 'Iquesters\\Foundation\\Security\\TenantAuthorization';
-
+    /** The global role that opens the admin menus (organisation admins hold it). */
     public const ORGANISATION_ADMIN_ROLE = 'admin';
 
     public const ORGANISATION_ACCESS = 'Iquesters\\Organisation\\Support\\OrganisationAccess';
-
-    private static bool $warned = false;
 
     public static function isPlatformAdmin(?Authenticatable $user): bool
     {
@@ -51,23 +42,8 @@ class CommunityAccess
             return Organisation::query()->where('status', 'active')->pluck('id')->map(fn ($id) => (int) $id)->all();
         }
 
-        if (class_exists(self::TENANT_POLICY) && Schema::hasTable(self::ASSIGNMENTS_TABLE)) {
-            return array_map('intval', app(self::TENANT_POLICY)->adminOrganisationIds($user));
-        }
-
-        // Interim rule until Track C adds explicit organisation admin assignments.
-        if (! method_exists($user, 'hasRole') || ! $user->hasRole(self::ORGANISATION_ADMIN_ROLE, 'web') || ! method_exists($user, 'organisations')) {
-            return [];
-        }
-
-        if (! self::$warned) {
-            self::$warned = true;
-            Log::warning('community.organisation_admin_fallback', [
-                'reason' => self::ASSIGNMENTS_TABLE.' is missing: "admin" members of an organisation manage it',
-            ]);
-        }
-
-        return $user->organisations()->where('organisations.status', 'active')->pluck('organisations.id')->map(fn ($id) => (int) $id)->all();
+        // Without the organisation module only super-admins manage (fail closed).
+        return [];
     }
 
     /** Super-admins always (even before any organisation exists: the pages then explain it). */

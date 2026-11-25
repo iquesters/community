@@ -20,8 +20,10 @@ use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\DirectoryTable;
 use Iquesters\Community\Support\OrganisationResolver;
 use Iquesters\Community\Support\ProofFields;
+use Iquesters\Community\Support\SchoolLevels;
 use Iquesters\Foundation\System\Http\ApiResponse;
 use Iquesters\Organisation\Models\Organisation;
+use Iquesters\Organisation\Support\OrganisationPolicies;
 
 /**
  * The applicant's side: apply for membership, see the application's status,
@@ -49,8 +51,10 @@ class ApplicationController extends Controller
         // A member: their membership (the directory is its own page).
         if ($membership?->status === Membership::STATUS_APPROVED) {
             return view('community::membership.home', [
-                'membership' => $membership->load('memberRecord.metas'),
+                'membership' => $membership->load(['memberRecord.metas', 'memberRecord.schoolRecords']),
                 'organisation' => $organisation,
+                // What they completed at the school: ICSE 2003 · ISC 2005 (Science).
+                'school' => SchoolLevels::describe($organisation, $membership->memberRecord?->schoolRecords ?? []),
                 'memberLabel' => DirectoryFields::conf()->member_label,
                 'fields' => collect(DirectoryFields::all())->reject(fn ($f) => $f['id'] === 'name')->values()->all(),
             ]);
@@ -64,7 +68,7 @@ class ApplicationController extends Controller
             'organisation' => $organisation,
             'organisations' => OrganisationResolver::isMultiple() ? OrganisationResolver::choices() : collect(),
             'membership' => $membership?->load('proofs', 'histories'),
-            'formId' => ApplicationForm::SLUG,
+            'formId' => ApplicationForm::ensureFor($organisation),
             'memberLabel' => DirectoryFields::conf()->member_label,
             // Prefill: the application on hold, else what the user's account knows (a rejected one starts afresh).
             'formData' => array_merge(
@@ -92,10 +96,19 @@ class ApplicationController extends Controller
             return $this->failed($request, 'Choose an organisation.');
         }
 
+        if (! $request->boolean('accept_terms')) {
+            $error = ['accept_terms' => ["Please agree to the organisation's Terms and Privacy policy."]];
+
+            return $request->expectsJson()
+                ? response()->json(['success' => false, 'message' => 'Please check the highlighted fields.', 'errors' => $error], 422)
+                : back()->withInput()->withErrors($error);
+        }
+
         $data = [];
         foreach (DirectoryFields::all() as $field) {
             $data[$field['id']] = $request->input("meta.{$field['id']}", $request->input($field['id']));
         }
+        $data['school_records'] = (array) $request->input('school_records', []);
         $proofs = [];
         foreach (ProofFields::all() as $proof) {
             $key = ApplicationForm::PROOF_PREFIX.$proof['id'];
@@ -103,7 +116,11 @@ class ApplicationController extends Controller
         }
 
         try {
-            $this->memberships->apply($request->user(), $organisation, $data, $proofs);
+            $membership = $this->memberships->apply($request->user(), $organisation, $data, $proofs);
+            // Which version of the organisation's terms they agreed to, and when.
+            $membership->update(['application_data' => array_merge((array) $membership->application_data, [
+                '_terms' => ['version' => OrganisationPolicies::version($organisation), 'accepted_at' => now()->toIso8601String()],
+            ])]);
         } catch (\DomainException $e) {
             return $this->failed($request, $e->getMessage());
         } catch (ValidationException $e) {
@@ -170,7 +187,10 @@ class ApplicationController extends Controller
     public function directoryData(Request $request): JsonResponse
     {
         $organisation = $this->memberOrganisation($request);
-        abort_unless($organisation, 403);
+        // Not a member (yet): an empty directory saying why, not an error.
+        if (! $organisation) {
+            return ApiResponse::success([], 'The directory shows the members of your organisation once your membership is approved.', 200, ['pagination' => ['total' => 0, 'offset' => 0, 'length' => 25]]);
+        }
 
         $offset = max(0, (int) $request->query('offset', 0));
         $length = min(100, max(1, (int) $request->query('length', 25)));
@@ -178,10 +198,10 @@ class ApplicationController extends Controller
         $page = $this->directory($organisation, $request, $offset, $length);
         $public = array_column($this->publicFields(), 'id');
 
-        $rows = $page['rows']->map(function (MemberRecord $member) use ($public) {
+        $rows = $page['rows']->map(function (MemberRecord $member) use ($public, $organisation) {
             $values = $member->metas->pluck('meta_value', 'meta_key');
 
-            return ['uid' => $member->uid, 'name' => $member->name] + collect($public)->mapWithKeys(fn ($id) => [$id => $values->get($id)])->all();
+            return ['uid' => $member->uid, 'name' => $member->name, 'school' => SchoolLevels::describe($organisation, $member->schoolRecords)] + collect($public)->mapWithKeys(fn ($id) => [$id => $values->get($id)])->all();
         })->all();
 
         return ApiResponse::success($rows, 'OK', 200, ['pagination' => ['total' => $page['total'], 'offset' => $offset, 'length' => $length]]);
@@ -242,7 +262,7 @@ class ApplicationController extends Controller
         $like = '%'.addcslashes($search, '%_\\').'%';
 
         $query = MemberRecord::query()
-            ->with('metas')
+            ->with(['metas', 'schoolRecords'])
             ->where('organisation_id', $organisation->id)
             ->where('status', '!=', 'deleted')
             ->whereIn('id', Membership::query()
@@ -250,12 +270,21 @@ class ApplicationController extends Controller
                 ->where('status', Membership::STATUS_APPROVED)
                 ->whereNotNull('member_record_id')
                 ->select('member_record_id'))
-            // The table's search: the name, or a public field's value (e.g. the batch).
+            // The table's search: the name, a public field's value (e.g. the section), or a school year (e.g. 2005).
             ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', $like)
                 ->orWhereExists(fn ($m) => $m->selectRaw('1')->from('member_record_metas')
                     ->whereColumn('member_record_metas.ref_parent', 'member_records.id')
                     ->whereIn('meta_key', $publicIds ?: ['-'])
-                    ->where('meta_value', 'like', $like))))
+                    ->where('meta_value', 'like', $like))
+                ->when(ctype_digit($search), fn ($y) => $y->orWhereExists(fn ($s) => $s->selectRaw('1')->from('member_school_records')
+                    ->whereColumn('member_school_records.member_record_id', 'member_records.id')
+                    ->where('member_school_records.year', (int) $search)))))
+            // ?level=isc&year=2010: everyone of that batch.
+            ->when($request->filled('level') || $request->filled('year'), fn ($q) => $q->whereExists(fn ($s) => $s
+                ->selectRaw('1')->from('member_school_records')
+                ->whereColumn('member_school_records.member_record_id', 'member_records.id')
+                ->when($request->filled('level'), fn ($l) => $l->where('level', (string) $request->query('level')))
+                ->when($request->filled('year'), fn ($y) => $y->where('year', (int) $request->query('year')))))
             ->when(in_array($request->query('field'), $publicIds, true) && $request->filled('value'), fn ($q) => $q->whereExists(fn ($m) => $m
                 ->selectRaw('1')->from('member_record_metas')
                 ->whereColumn('member_record_metas.ref_parent', 'member_records.id')

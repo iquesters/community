@@ -57,6 +57,13 @@
                 <div class="card-body">
                     <h5 class="fs-6 mb-1">Apply to {{ $organisation->name }}</h5>
                     <p class="text-muted small mb-3">Fill in your details as the school would have them, so we can find your record. Proof helps when the school's records don't have you.</p>
+                    <p class="small mb-3">
+                        <i class="fas fa-file-contract text-muted me-1" aria-hidden="true"></i>
+                        By applying you agree to
+                        @foreach (\Iquesters\Organisation\Support\OrganisationPolicies::links($organisation) as $link)
+                            <a href="{{ $link['url'] }}" target="_blank" rel="noopener">{{ $link['label'] }}</a>@if (! $loop->last) and @endif
+                        @endforeach
+                    </p>
 
                     {{-- Form schema "community-membership-application" (built by community:seed from the directory and proof settings). --}}
                     @include('userinterface::components.form', [

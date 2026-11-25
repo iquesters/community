@@ -38,7 +38,6 @@
                             'formData' => json_encode(['on_duplicate' => 'skip']),
                         ])
                     </div>
-                    <a href="{{ route('community.members.import.index') }}" class="btn btn-sm btn-outline-secondary mb-3">Start again</a>
                 </div>
             </div>
 

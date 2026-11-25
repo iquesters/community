@@ -60,6 +60,25 @@ class CommunityForms
                     ['value' => 'update', 'label' => 'Update their record with the new values (one match only)'],
                 ]],
             ],
+            // One row: drop this preview and choose another file, or import it.
+            'actions' => [
+                [
+                    'type' => 'link',
+                    'route' => '/community/members/import',
+                    'text' => 'Upload another file',
+                    'element' => ['type' => 'a', 'variant' => 'outline', 'color' => 'secondary', 'size' => 'sm'],
+                    'align' => 'end',
+                    'row' => 0,
+                ],
+                [
+                    'type' => 'submit',
+                    'route' => '#',
+                    'text' => 'Import',
+                    'element' => ['type' => 'button', 'color' => 'primary', 'size' => 'sm'],
+                    'align' => 'end',
+                    'row' => 0,
+                ],
+            ],
         ];
     }
 

@@ -12,6 +12,7 @@ use Iquesters\Community\Models\Membership;
 use Iquesters\Community\Services\Membership\MembershipService;
 use Iquesters\Community\Tests\TestCase;
 use Iquesters\Foundation\Models\NavigationItem;
+use Iquesters\Organisation\Models\Organisation;
 
 /**
  * Applying and approval, with the default (alumni) directory and proof fields.
@@ -19,7 +20,8 @@ use Iquesters\Foundation\Models\NavigationItem;
 class MembershipApplicationTest extends TestCase
 {
     /** The application form (form schema) on the page. */
-    private const FORM = 'id="community-membership-application"';
+    // Each organisation has its own copy of the form: community-membership-application-{organisation uid}.
+    private const FORM = 'id="community-membership-application-';
 
     protected function setUp(): void
     {
@@ -30,7 +32,7 @@ class MembershipApplicationTest extends TestCase
     private function apply(array $data = [], array $proof = [])
     {
         // As the application form (form schema) sends it: field ids, proof__{id}.
-        $payload = $data + ['name' => 'Ann Roy', 'email' => 'ann@example.test', 'batch' => '1962'];
+        $payload = $data + ['name' => 'Ann Roy', 'email' => 'ann@example.test', 'school_records' => [['level' => 'icse', 'year' => '1962']], 'accept_terms' => '1'];
         foreach ($proof as $id => $value) {
             $payload['proof__'.$id] = $value;
         }
@@ -55,7 +57,7 @@ class MembershipApplicationTest extends TestCase
         $this->assertSame(Membership::STATUS_APPLIED, $membership->status);
         $this->assertSame($organisation->id, $membership->organisation_id);
         $this->assertSame($user->id, (int) $membership->user_id);
-        $this->assertSame('1962', $membership->application_data['batch']);
+        $this->assertSame([['level' => 'icse', 'year' => 1962, 'class_left' => null, 'stream' => null]], $membership->application_data['school_records']);
         $this->assertSame(['registration_number' => 'TTV/1962/12'], $membership->proofs->where('kind', 'identifier')->pluck('value', 'field')->all());
         Storage::disk(MembershipService::PROOF_DISK)->assertExists($membership->proofs->firstWhere('kind', 'file')->file_path);
         $this->assertSame([null, 'applied'], [$membership->histories[0]->from_status, $membership->histories[0]->to_status]);
@@ -71,9 +73,17 @@ class MembershipApplicationTest extends TestCase
         $this->makeOrganisation();
         $this->actingAs($this->makeUser('user'));
 
-        $this->from('/community/membership')->apply(['batch' => '', 'email' => 'nope'])
+        $this->from('/community/membership')->apply(['school_records' => [], 'email' => 'nope'])
             ->assertRedirect('/community/membership')
-            ->assertSessionHasErrors(['batch', 'email']);
+            ->assertSessionHasErrors(['school_records', 'email']);
+
+        // ISC began in 2005; ISC must come after ICSE; "left" needs the class.
+        $this->from('/community/membership')->apply(['school_records' => [['level' => 'isc', 'year' => '2003']]])
+            ->assertSessionHasErrors('school_records.0.year');
+        $this->from('/community/membership')->apply(['school_records' => [['level' => 'icse', 'year' => '2006'], ['level' => 'isc', 'year' => '2006']]])
+            ->assertSessionHasErrors('school_records');
+        $this->from('/community/membership')->apply(['school_records' => [['level' => 'left', 'year' => '1998']]])
+            ->assertSessionHasErrors('school_records.0.class_left');
         $this->assertSame(0, Membership::count());
     }
 
@@ -88,7 +98,7 @@ class MembershipApplicationTest extends TestCase
         $admin = $this->makeUser('super-admin');
         // The record the table opens: the application's values, and the one clear match picked already.
         $this->actingAs($admin)->getJson("/community/applications/data/{$membership->uid}")->assertOk()
-            ->assertJsonPath('response_schema.data.batch', '1962')
+            ->assertJsonPath('response_schema.data.school', 'ICSE 1962')
             ->assertJsonPath('response_schema.data.status', 'applied')
             ->assertJsonPath('response_schema.data.link_record_uid', $record->uid);
         $this->get("/community/applications/{$membership->uid}/history")->assertOk()->assertSee('Applied');
@@ -135,7 +145,8 @@ class MembershipApplicationTest extends TestCase
         $this->assertSame($user->id, (int) $record->user_id);
         $this->assertSame($organisation->id, $record->organisation_id);
         $this->assertSame('+919830012345', $record->phone);
-        $this->assertSame(['batch' => '1962', 'section' => 'B'], $record->metaValues());
+        $this->assertSame(['section' => 'B'], $record->metaValues());
+        $this->assertSame([['icse', 1962]], $record->schoolRecords->map(fn ($s) => [$s->level, $s->year])->all());
     }
 
     public function test_hold_lets_the_applicant_send_it_again_and_reject_needs_a_reason(): void
@@ -245,16 +256,22 @@ class MembershipApplicationTest extends TestCase
         $this->makeOrganisation();
         $this->actingAs($this->makeUser('user'));
 
-        $this->postJson('/community/membership', ['name' => 'Ann Roy', 'batch' => '', 'proof__registration_number' => str_repeat('x', 300)])
+        // The organisation's terms must be agreed to.
+        $this->postJson('/community/membership', ['name' => 'Ann Roy', 'school_records' => [['level' => 'icse', 'year' => 1962]]])
+            ->assertStatus(422)->assertJsonValidationErrors('accept_terms');
+
+        $this->postJson('/community/membership', ['name' => 'Ann Roy', 'proof__registration_number' => str_repeat('x', 300), 'accept_terms' => '1'])
             ->assertStatus(422)
             ->assertJsonPath('success', false)
-            ->assertJsonValidationErrors(['batch', 'proof__registration_number']);
+            ->assertJsonValidationErrors(['school_records', 'proof__registration_number']);
 
-        // Meta fields arrive under "meta", as the form engine sends them.
-        $this->postJson('/community/membership', ['name' => 'Ann Roy', 'meta' => ['batch' => '1962', 'section' => 'B']])
+        // Meta fields arrive under "meta", the school records as the repeater's rows.
+        $this->postJson('/community/membership', ['name' => 'Ann Roy', 'meta' => ['section' => 'B'], 'school_records' => [['level' => 'icse', 'year' => '1962']], 'accept_terms' => '1'])
             ->assertOk()
             ->assertJsonPath('redirect_url', url('/community/membership'));
         $this->assertSame('B', Membership::firstOrFail()->application_data['section']);
+        // The version agreed to is kept with the application ("platform": the organisation has none of its own).
+        $this->assertSame('platform', Membership::firstOrFail()->application_data['_terms']['version']);
     }
 
     public function test_the_old_apply_address_redirects_to_membership(): void
@@ -270,11 +287,15 @@ class MembershipApplicationTest extends TestCase
         $ids = array_column($schema['fields'], 'id');
 
         $this->assertSame('/community/membership', $schema['endpoint']);
-        $this->assertContains('batch', $ids);
+        $this->assertContains('school_records', $ids);
+        $this->assertNotContains('batch', $ids);
         $this->assertContains('proof__registration_number', $ids);
         $this->assertContains('proof__proof_document', $ids);
         $this->assertNotContains('organisation_id', $ids);
-        $this->assertTrue(collect($schema['fields'])->firstWhere('id', 'batch')['meta']);
+        $this->assertTrue(collect($schema['fields'])->firstWhere('id', 'section')['meta']);
+        // Each organisation has its own copy with its levels.
+        $organisation = Organisation::firstOrFail();
+        $this->assertNotNull(DB::table('form_schemas')->where('slug', 'community-membership-application-'.strtolower($organisation->uid))->value('id'));
     }
 
     public function test_the_applications_list_filters_by_status_tab_and_search(): void
@@ -282,9 +303,9 @@ class MembershipApplicationTest extends TestCase
         $organisation = $this->makeOrganisation();
         $service = app(MembershipService::class);
         $admin = $this->makeUser('super-admin');
-        $waiting = $service->apply($this->makeUser('user'), $organisation, ['name' => 'Ann Roy', 'batch' => '1962']);
-        $held = $service->hold($service->apply($this->makeUser('user'), $organisation, ['name' => 'Bob Sen', 'batch' => '1970']), $admin->id, 'More?');
-        $service->approve($service->apply($this->makeUser('user'), $organisation, ['name' => 'Cid Das', 'batch' => '1980']), $admin->id);
+        $waiting = $service->apply($this->makeUser('user'), $organisation, ['name' => 'Ann Roy', 'school_records' => [['level' => 'icse', 'year' => 1962]]]);
+        $held = $service->hold($service->apply($this->makeUser('user'), $organisation, ['name' => 'Bob Sen', 'school_records' => [['level' => 'icse', 'year' => 1970]]]), $admin->id, 'More?');
+        $service->approve($service->apply($this->makeUser('user'), $organisation, ['name' => 'Cid Das', 'school_records' => [['level' => 'icse', 'year' => 1980]]]), $admin->id);
         $this->actingAs($admin);
 
         $names = fn (string $query) => array_column($this->getJson('/community/applications/data'.$query)->assertOk()->json('response_schema.data'), 'name');

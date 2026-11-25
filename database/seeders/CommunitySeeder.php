@@ -12,6 +12,7 @@ use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\DirectoryPresets;
 use Iquesters\Community\Support\DirectoryTable;
 use Iquesters\Community\Support\OrganisationResolver;
+use Iquesters\Community\Support\SchoolForms;
 use Iquesters\Foundation\Database\Seeders\BaseSeeder;
 use Iquesters\Foundation\Models\Module;
 use Iquesters\Organisation\Models\Organisation;
@@ -46,16 +47,20 @@ class CommunitySeeder extends BaseSeeder
                 'permission' => self::DIRECTORY_PERMISSION,
             ],
             [
+                // "members": the key it always had, so installs rename the item instead of adding one.
+                'key' => 'members',
                 'icon' => 'fas fa-address-book',
-                'label' => 'Members',
+                'label' => 'Member records',
                 'permission' => self::MANAGE_PERMISSION,
                 'table_schema' => [
                     'slug' => 'community-member-table',
                     'name' => 'Member records',
-                    'description' => 'The member directory',
+                    'description' => self::MEMBER_TABLE_DESCRIPTION,
                     'schema' => [
                         'entity' => 'member_records',
                         'create' => ['form' => 'community-member-record', 'label' => 'Add member'],
+                        // The record: its details, and what they completed at the school.
+                        'record' => self::MEMBER_RECORD_SECTIONS,
                         'dt-options' => [
                             'columns' => [
                                 [
@@ -81,6 +86,13 @@ class CommunitySeeder extends BaseSeeder
                 ],
             ],
             [
+                'key' => 'school-levels',
+                'icon' => 'fas fa-graduation-cap',
+                'label' => 'School levels',
+                'route' => 'community.school-levels.index',
+                'permission' => self::MANAGE_PERMISSION,
+            ],
+            [
                 'icon' => 'fas fa-file-import',
                 'label' => 'Bulk upload',
                 'route' => 'community.members.import.index',
@@ -97,6 +109,15 @@ class CommunitySeeder extends BaseSeeder
 
     /** Sees the member directory (given to the member role on approval). */
     public const DIRECTORY_PERMISSION = 'view-member-directory';
+
+    /** Shown under the Member records title. */
+    public const MEMBER_TABLE_DESCRIPTION = "Your organisation's register: everyone on record, with or without a login (e.g. from the school's lists), with contact details. Admins only.";
+
+    /** Members table record sections (also written onto an existing table by seedCustom). */
+    public const MEMBER_RECORD_SECTIONS = [
+        ['form' => 'community-member-record', 'mode' => 'view', 'title' => 'Details'],
+        ['html' => '/community/members/{uid}/school', 'title' => 'At school'],
+    ];
 
     /** Who sees the Community module at all (organisation admins use the "admin" role). */
     public const MODULE_ROLES = ['super-admin', 'admin', 'user', 'member'];
@@ -135,8 +156,19 @@ class CommunitySeeder extends BaseSeeder
 
     public function run(): void
     {
-        // The member directory table (its sidebar item redirects to it).
-        DirectoryTable::sync();
+        // The member directory table: its sidebar item opens it directly, so the
+        // sidebar marks it on the list page (/community/directory still redirects).
+        $directoryUid = DirectoryTable::sync();
+        if ($directoryUid) {
+            $this->metas['module_sidebar_menu'] = array_map(function (array $item) use ($directoryUid) {
+                if (($item['key'] ?? null) === 'directory') {
+                    unset($item['route']);
+                    $item['default-table-schema-uid'] = $directoryUid;
+                }
+
+                return $item;
+            }, $this->metas['module_sidebar_menu']);
+        }
 
         // The Applications table first: the sidebar item and its tabs link to it.
         $tableUid = ApplicationTable::sync();
@@ -186,8 +218,26 @@ class CommunitySeeder extends BaseSeeder
         // The application form follows the directory and proof settings: rebuilt on every seed.
         ApplicationForm::sync();
         CommunityForms::syncAll();
+        SchoolForms::syncAll();
+        $this->syncMemberTableSections();
         DecisionForm::sync();
         $this->relaxDefaultedColumns();
+    }
+
+    /** Existing installs: the Members table gets its record sections (admins' columns stay). */
+    private function syncMemberTableSections(): void
+    {
+        $row = DB::table('table_schemas')->where('slug', 'community-member-table')->first(['id', 'schema']);
+        $schema = $row ? json_decode((string) $row->schema, true) : null;
+        if (! is_array($schema)) {
+            return;
+        }
+        $schema['record'] = self::MEMBER_RECORD_SECTIONS;
+        DB::table('table_schemas')->where('id', $row->id)->update([
+            'description' => self::MEMBER_TABLE_DESCRIPTION,
+            'schema' => json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'updated_at' => now(),
+        ]);
     }
 
     /**
@@ -213,8 +263,8 @@ class CommunitySeeder extends BaseSeeder
     }
 
     /**
-     * Single mode: members need an organisation, so create one (named after the
-     * app) when none exists. Multiple mode: the admins create them.
+     * Single mode: members need an organisation, so create one (named by the
+     * conf's default_organisation_name, default "iq-test-org") when none exists. Multiple mode: the admins create them.
      */
     private function seedDefaultOrganisation(): void
     {
@@ -222,7 +272,7 @@ class CommunitySeeder extends BaseSeeder
             return;
         }
 
-        $name = (string) config('app.name') ?: 'My organisation';
+        $name = trim((string) DirectoryFields::conf()->default_organisation_name) ?: 'iq-test-org';
         Organisation::create([
             'uid' => (string) Str::ulid(),
             'name' => $name,

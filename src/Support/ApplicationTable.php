@@ -33,7 +33,7 @@ class ApplicationTable
                 'columns' => [
                     ['data' => 'name', 'title' => 'Name', 'visible' => true, 'link' => true, 'form-schema-uid' => ApplicationForm::SLUG],
                     ['data' => 'email', 'title' => 'Account', 'visible' => true],
-                    ['data' => 'batch', 'title' => 'Batch', 'visible' => true],
+                    ['data' => 'school', 'title' => 'At school', 'visible' => true],
                     ['data' => 'organisation', 'title' => 'Organisation', 'visible' => true],
                     ['data' => 'status_label', 'title' => 'Status', 'visible' => true],
                     ['data' => 'created_at', 'title' => 'Applied', 'visible' => true],
@@ -67,7 +67,7 @@ class ApplicationTable
         DB::table('table_schemas')->updateOrInsert(['slug' => self::SLUG], [
             'uid' => $existing->uid ?? (string) Str::ulid(),
             'name' => 'Applications',
-            'description' => 'Membership applications (rows from community, limited to the organisations the admin manages)',
+            'description' => 'People asking to join your organisation. Open one to see their details, proof and matching records, then approve, hold or reject.',
             'schema' => json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'status' => 'active',
             'created_at' => $existing->created_at ?? now(),

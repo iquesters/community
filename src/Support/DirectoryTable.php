@@ -20,7 +20,11 @@ class DirectoryTable
     public static function schema(): array
     {
         $public = array_filter(array_map('trim', explode(',', (string) DirectoryFields::conf()->directory_public_fields)));
-        $columns = [['data' => 'name', 'title' => 'Name', 'visible' => true]];
+        $columns = [
+            ['data' => 'name', 'title' => 'Name', 'visible' => true],
+            // ICSE 2003 · ISC 2005, or "Left after Class 8, 1998": always shown.
+            ['data' => 'school', 'title' => 'At school', 'visible' => true],
+        ];
         foreach (DirectoryFields::all() as $field) {
             if (in_array($field['id'], $public, true) && ! in_array($field['id'], ['email', 'phone'], true)) {
                 $columns[] = ['data' => $field['id'], 'title' => $field['label'], 'visible' => true];
@@ -49,7 +53,7 @@ class DirectoryTable
         DB::table('table_schemas')->updateOrInsert(['slug' => self::SLUG], [
             'uid' => $existing->uid ?? (string) Str::ulid(),
             'name' => 'Directory',
-            'description' => 'Approved members (name and public fields)',
+            'description' => 'Approved members of your organisation: name, school years and what they chose to share. Contact details stay private.',
             'schema' => json_encode(self::schema(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'status' => 'active',
             'created_at' => $existing->created_at ?? now(),

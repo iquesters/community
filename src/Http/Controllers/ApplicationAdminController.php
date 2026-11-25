@@ -16,6 +16,7 @@ use Iquesters\Community\Support\ApplicationForm;
 use Iquesters\Community\Support\ApplicationTable;
 use Iquesters\Community\Support\CommunityAccess;
 use Iquesters\Community\Support\OrganisationResolver;
+use Iquesters\Community\Support\SchoolLevels;
 use Iquesters\Foundation\System\Http\ApiResponse;
 
 /**
@@ -149,7 +150,7 @@ class ApplicationAdminController extends Controller
                 continue;
             }
             $record = $match['record'];
-            $details = array_filter([$record->email, $record->getMetaValue('batch') ? 'batch '.$record->getMetaValue('batch') : null]);
+            $details = array_filter([$record->email, SchoolLevels::describe($membership->organisation, $record->schoolRecords) ?: null]);
             $options[] = [
                 'value' => $record->uid,
                 'label' => $record->name.($details ? ' ('.implode(', ', $details).')' : '').': same '.implode(', ', $match['keys']),
@@ -203,7 +204,9 @@ class ApplicationAdminController extends Controller
             'uid' => $membership->uid,
             'name' => $data['name'] ?? $membership->user?->name,
             'email' => $membership->user?->email,
-            'batch' => $data['batch'] ?? null,
+            // What they completed at the school (e.g. ICSE 2003 · ISC 2005); "batch" for tables saved before.
+            'school' => $school = SchoolLevels::describe($membership->organisation, (array) ($data['school_records'] ?? [])),
+            'batch' => $school,
             'organisation' => $membership->organisation?->name,
             'status' => $membership->status,
             'status_label' => $membership->statusLabel(),

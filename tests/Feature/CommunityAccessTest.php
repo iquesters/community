@@ -13,6 +13,7 @@ use Iquesters\Community\Support\CommunityAccess;
 use Iquesters\Community\Tests\TestCase;
 use Iquesters\Foundation\Models\Module;
 use Iquesters\Organisation\Models\Organisation;
+use Iquesters\Organisation\Support\OrganisationRoles;
 
 /**
  * Who sees what: organisation admins manage only their organisations;
@@ -28,14 +29,14 @@ class CommunityAccessTest extends TestCase
 
     private function applicationIn(Organisation $organisation, string $name = 'Ann Roy'): Membership
     {
-        return app(MembershipService::class)->apply($this->makeUser('user'), $organisation, ['name' => $name, 'batch' => '1962']);
+        return app(MembershipService::class)->apply($this->makeUser('user'), $organisation, ['name' => $name, 'school_records' => [['level' => 'icse', 'year' => 1962]]]);
     }
 
-    /** An organisation admin while organisation_role_assignments doesn't exist: "admin" + member of it. */
+    /** An organisation admin: org-admin role in that organisation (organisation module). */
     private function organisationAdmin(Organisation $organisation)
     {
         $admin = $this->makeUser('admin');
-        $admin->organisations()->attach($organisation->id);
+        OrganisationRoles::join($admin, $organisation, 'org-admin');
 
         return $admin;
     }
@@ -88,7 +89,7 @@ class CommunityAccessTest extends TestCase
         $a = $this->makeOrganisation('Alpha');
         $b = $this->makeOrganisation('Beta');
         $applicant = $this->makeUser('user');
-        $membership = app(MembershipService::class)->apply($applicant, $a, ['name' => 'Ann Roy', 'batch' => '1962'], [
+        $membership = app(MembershipService::class)->apply($applicant, $a, ['name' => 'Ann Roy', 'school_records' => [['level' => 'icse', 'year' => 1962]]], [
             'proof_document' => UploadedFile::fake()->create('id.pdf', 10, 'application/pdf'),
         ]);
         $proof = $membership->proofs()->firstOrFail();
@@ -105,15 +106,15 @@ class CommunityAccessTest extends TestCase
 
         // Two approved members, one person only in the school's data.
         $ann = $this->makeUser('user');
-        $service->approve($service->apply($ann, $organisation, ['name' => 'Ann Roy', 'email' => 'ann@example.test', 'batch' => '1962', 'section' => 'B']), $admin->id);
+        $service->approve($service->apply($ann, $organisation, ['name' => 'Ann Roy', 'email' => 'ann@example.test', 'school_records' => [['level' => 'icse', 'year' => 1962]], 'section' => 'B']), $admin->id);
         $bob = $this->makeUser('user');
-        $service->approve($service->apply($bob, $organisation, ['name' => 'Bob Sen', 'email' => 'bob@example.test', 'batch' => '1970']), $admin->id);
+        $service->approve($service->apply($bob, $organisation, ['name' => 'Bob Sen', 'email' => 'bob@example.test', 'school_records' => [['level' => 'icse', 'year' => 1970]]]), $admin->id);
         MemberRecord::create(['organisation_id' => $organisation->id, 'name' => 'Only In Records', 'source' => 'bulk_upload']);
 
         // Membership: their own membership and details only.
         $this->actingAs($ann)->get('/community/membership')->assertOk()
             ->assertSee('Member since')
-            ->assertSee('1962')
+            ->assertSee('ICSE 1962')
             ->assertDontSee('Bob Sen');
 
         // Directory (the generic table's rows): approved members only; contact details stay private.
@@ -122,11 +123,14 @@ class CommunityAccessTest extends TestCase
         $this->getJson('/community/directory/data')->assertJsonMissing(['email' => 'bob@example.test']);
         $this->assertSame(['Bob Sen'], $names('?search=bob'));
         $this->assertSame(['Bob Sen'], $names('?search=1970')); // a public field's value
-        $this->assertSame('1962', collect($this->getJson('/community/directory/data')->json('response_schema.data'))->firstWhere('name', 'Ann Roy')['batch']);
+        $this->assertSame('ICSE 1962', collect($this->getJson('/community/directory/data')->json('response_schema.data'))->firstWhere('name', 'Ann Roy')['school']);
+        // Search by a school year, filter by level and year.
+        $this->assertSame(['Ann Roy'], array_column($this->getJson('/community/directory/data?search=1962')->json('response_schema.data'), 'name'));
+        $this->assertSame(['Bob Sen'], array_column($this->getJson('/community/directory/data?level=icse&year=1970')->json('response_schema.data'), 'name'));
 
         // Not a member: no rows, and the page sends them to Membership.
         $this->actingAs($this->makeUser('user'));
-        $this->getJson('/community/directory/data')->assertForbidden();
+        $this->getJson('/community/directory/data')->assertOk()->assertJsonCount(0, 'response_schema.data'); // not a member: empty, not an error
         $this->get('/community/directory')->assertRedirect('/community/membership');
     }
 

@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (test round 2)
+- **School levels and Edit school records saved to a wrong address** (`PUT /community/school-levels`): the pages now give their forms the record's uid. Both open **read-only** with **Edit**.
+- **Members edit their own details:** Membership → **Edit my details** (the directory fields and what they completed at the school, with their school's levels; form `community-member-details-{organisation uid}`). Saved straight away and noted in the membership history. A member without school records (e.g. an org-admin made a member automatically) sees **Complete your details**.
+- **Members → Member records**, with a one-line description on Member records, Directory and Applications.
+- **Directory** opens its table directly (highlighted in the sidebar); someone who isn't a member yet gets an empty list instead of an error.
+- **Bulk upload preview:** **Upload another file** (was "Start again") sits beside **Import** in the form's button row.
+
+### Added (school records: Class 10 and Class 12 batches)
+- **What a member completed at the school** is a list of **school records** (new table `member_school_records`: member record, level, year, class left, stream), not one "batch". A person can have an ICSE (Class 10) **and** an ISC (Class 12) batch at the same school, one at each of two schools (a membership in each), or have **left earlier** ("Left before finishing": the class they left after, and the year).
+- **Levels per school** (Community → **School levels**, new sidebar item for admins): short code, name, class and first year, e.g. ICSE (Class 10) and ISC (Class 12) from 2005. Default levels in the new setting `school_levels`. A level members already have records of can't be removed.
+- **Checks:** a year from 1900 to next year; not before the level's first year (no ISC before 2005); the higher class after the lower one (ISC after ICSE); "left" needs the class (1–12); each level once.
+- **Application form:** "What you completed at this school" (a list: Completed, Year, Class left after, Stream), at least one row. Each organisation has its own copy of the form with its levels (`community-membership-application-{organisation uid}`, rebuilt by `community:seed` and when the levels are saved).
+- **Bulk upload:** new columns **Level** (code or name; empty: the first level), **Year**, **Class left**, **Stream** (in the template). An older **Batch** column is read as the first level's year. The preview has a **School** column.
+- **Matching** key `school` (default match keys `email,phone,school+name`; `batch` in saved settings means `school`): the same name and a school record of the same level and year, or of the other exam level within 3 years. So the **ICSE register and the ISC register merge into one record** (choose "Update their record" on import).
+- **Directory:** a new **At school** column ("ICSE 2003 · ISC 2005 (Science)", "Left after Class 8, 1998"); search by a year; filter `?level=isc&year=2010`. `directory_public_fields` defaults to `section`.
+- **Members:** the record shows **At school** with **Edit school records** (form `community-member-school-records-{organisation uid}`). Approving an application creates the record's school records, or adds the levels a linked record doesn't have yet.
+- **Applications:** an **At school** column instead of Batch; match suggestions show the school years.
+- **Existing data is kept:** the migration copies each record's `batch` into an ICSE school record and removes Batch from the directory form (the batch values stay in the metas).
+
+### Changed (test round 1)
+- **Default organisation name:** single mode's seeder creates it as the new setting `default_organisation_name` (default `iq-test-org`), not after `APP_NAME`.
+- **Organisation admins come from the organisation module only** (per-organisation org-admin role). The fallback "global `admin` role + member of it" is gone. Approving a membership adds the person as a **member** of that organisation, never as its admin, and keeps a role they already have there.
+- **The application asks to agree to the organisation's Terms and Privacy policy** (required checkbox; the page links that organisation's pages, else the platform's). The version agreed to and the time are kept with the application (`application_data._terms`).
+
 ### Fixed
 - **Membership and Apply pages use the full content width** like every other page, instead of a narrow centred column with an empty gap beside the sidebar.
 

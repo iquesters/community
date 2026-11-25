@@ -37,7 +37,7 @@ class DirectoryPresets
                 ['id' => 'employer', 'label' => 'Employer', 'type' => 'text', 'maxLength' => 255, 'meta' => true],
             ],
             default => [
-                ['id' => 'batch', 'label' => 'Batch (passing year)', 'type' => 'number', 'required' => true, 'min' => 1900, 'max' => 2100, 'meta' => true],
+                // The batches (ICSE 2003, ISC 2005, or the class left after) are school records, not a field.
                 ['id' => 'section', 'label' => 'Section', 'type' => 'text', 'maxLength' => 32, 'meta' => true],
                 ['id' => 'roll_number', 'label' => 'Roll number', 'type' => 'text', 'maxLength' => 64, 'meta' => true],
                 ['id' => 'house', 'label' => 'House', 'type' => 'text', 'maxLength' => 64, 'meta' => true],

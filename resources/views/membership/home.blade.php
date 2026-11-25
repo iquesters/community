@@ -31,10 +31,26 @@
         {{-- What the organisation has on record for them --}}
         <div class="card border-0 shadow-sm">
             <div class="card-body">
-                <h6 class="fs-6 mb-3">Your details</h6>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h6 class="fs-6 mb-0">Your details</h6>
+                    <a href="{{ route('community.membership.details', $membership->uid) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-fw fa-pen"></i> Edit my details
+                    </a>
+                </div>
+                @if (! filled($school ?? ''))
+                    {{-- E.g. an organisation admin, made a member without an application. --}}
+                    <div class="alert alert-warning small d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <span><span class="fw-semibold">Complete your details:</span> add what you completed at the school (e.g. ICSE and the year), so fellow members can find you.</span>
+                        <a href="{{ route('community.membership.details', $membership->uid) }}" class="btn btn-sm btn-warning">Complete now</a>
+                    </div>
+                @endif
                 <dl class="row small mb-0">
                     <dt class="col-sm-4 col-lg-3 col-xxl-2 text-muted fw-normal">Name</dt>
                     <dd class="col-sm-8 col-lg-9 col-xxl-10">{{ $record?->name ?? auth()->user()->name }}</dd>
+                    @if (filled($school ?? ''))
+                        <dt class="col-sm-4 col-lg-3 col-xxl-2 text-muted fw-normal">At school</dt>
+                        <dd class="col-sm-8 col-lg-9 col-xxl-10">{{ $school }}</dd>
+                    @endif
                     @foreach ($fields as $field)
                         @if (filled($values->get($field['id'])))
                             <dt class="col-sm-4 col-lg-3 col-xxl-2 text-muted fw-normal">{{ $field['label'] }}</dt>
@@ -42,7 +58,7 @@
                         @endif
                     @endforeach
                 </dl>
-                <p class="small text-muted mb-0 mt-2">Something wrong? Ask an administrator of {{ $organisation->name }} to correct it.</p>
+                <p class="small text-muted mb-0 mt-2">Something you can't change here? Ask an administrator of {{ $organisation->name }}.</p>
             </div>
         </div>
 </div>

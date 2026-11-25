@@ -4,7 +4,9 @@ use Illuminate\Support\Facades\Route;
 use Iquesters\Community\Http\Controllers\ApplicationAdminController;
 use Iquesters\Community\Http\Controllers\ApplicationController;
 use Iquesters\Community\Http\Controllers\ApplicationProofController;
+use Iquesters\Community\Http\Controllers\MemberDetailsController;
 use Iquesters\Community\Http\Controllers\MemberImportController;
+use Iquesters\Community\Http\Controllers\SchoolRecordController;
 
 $ulid = '[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}';
 
@@ -21,6 +23,9 @@ Route::middleware('web')->group(function () use ($ulid) {
         Route::post('/membership/organisation', [ApplicationController::class, 'chooseOrganisation'])->name('community.membership.organisation');
         // The application form (form schema) posts here.
         Route::post('/membership', [ApplicationController::class, 'store'])->name('community.membership.apply');
+        // A member edits their own details (their approved membership; checked in the controller).
+        Route::get('/membership/details/{uid}', [MemberDetailsController::class, 'edit'])->where('uid', $ulid)->name('community.membership.details');
+        Route::put('/membership/details/{uid}', [MemberDetailsController::class, 'update'])->where('uid', $ulid)->name('community.membership.details.update');
         // Old address of the apply page.
         Route::get('/apply', [ApplicationController::class, 'legacy'])->name('community.apply.show');
         // The applicant or a platform admin (checked in the controller).
@@ -39,6 +44,18 @@ Route::middleware('web')->group(function () use ($ulid) {
             Route::post('/preview', [MemberImportController::class, 'preview'])->name('preview');
             Route::post('/{token}', [MemberImportController::class, 'store'])->where('token', $ulid)->name('store');
         });
+
+        // A member's school records (Members table record section and its edit page).
+        Route::prefix('members/{uid}')->where(['uid' => $ulid])->name('community.members.school.')->group(function () {
+            Route::get('/school', [SchoolRecordController::class, 'section'])->name('section');
+            Route::get('/school/edit', [SchoolRecordController::class, 'edit'])->name('edit');
+            Route::put('/school-records', [SchoolRecordController::class, 'update'])->name('update');
+        });
+
+        // An organisation's school levels (ICSE, ISC…).
+        Route::get('/school-levels', [SchoolRecordController::class, 'levelsIndex'])->name('community.school-levels.index');
+        Route::get('/school-levels/{uid}', [SchoolRecordController::class, 'levelsEdit'])->where('uid', $ulid)->name('community.school-levels.edit');
+        Route::put('/school-levels/{uid}', [SchoolRecordController::class, 'levelsUpdate'])->where('uid', $ulid)->name('community.school-levels.update');
 
         Route::prefix('applications')->name('community.applications.')->group(function () use ($ulid) {
             Route::get('/', [ApplicationAdminController::class, 'index'])->name('index');

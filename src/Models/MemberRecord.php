@@ -50,6 +50,12 @@ class MemberRecord extends Model
         });
     }
 
+    /** What they completed at the school: levels and years (ICSE 2003, ISC 2005), or the class they left after. */
+    public function schoolRecords(): HasMany
+    {
+        return $this->hasMany(MemberSchoolRecord::class);
+    }
+
     public function metas(): HasMany
     {
         return $this->hasMany(MemberRecordMeta::class, 'ref_parent');
