@@ -24,7 +24,7 @@ class DirectoryFields
     public const NOT_DIRECTORY = ['organisation_id', 'user_id'];
 
     /** Field types that carry no value. */
-    private const SKIPPED_TYPES = ['hidden', 'spacer', 'heading', 'divider', 'html', 'file', 'image'];
+    private const SKIPPED_TYPES = ['hidden', 'spacer', 'section', 'heading', 'divider', 'html', 'file', 'image'];
 
     public static function conf(): CommunityConf
     {

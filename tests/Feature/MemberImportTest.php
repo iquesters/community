@@ -195,7 +195,7 @@ class MemberImportTest extends TestCase
         // Upload page: a notice instead of the form.
         $this->get('/community/members/import')->assertOk()
             ->assertSee('No organisation yet')
-            ->assertDontSee('name="file"', false);
+            ->assertDontSee('id="community-member-import"', false);
 
         // The form's organisation select: one option saying why.
         $this->getJson('/api/community/v1/organisations')->assertOk()
@@ -204,7 +204,7 @@ class MemberImportTest extends TestCase
             ->assertJsonCount(1, 'response_schema.data');
 
         $this->makeOrganisation();
-        $this->get('/community/members/import')->assertOk()->assertSee('name="file"', false);
+        $this->get('/community/members/import')->assertOk()->assertSee('id="community-member-import"', false);
     }
 
     public function test_the_seeder_creates_a_default_organisation_in_single_mode_only_when_none_exists(): void
@@ -216,5 +216,25 @@ class MemberImportTest extends TestCase
         // Seeding again doesn't add another.
         $this->seed(CommunitySeeder::class);
         $this->assertSame(1, Organisation::count());
+    }
+
+    public function test_the_upload_form_engine_flow_gets_json(): void
+    {
+        $organisation = $this->makeOrganisation();
+        $this->actingAs($this->makeUser('super-admin'));
+
+        $this->getJson('/community/members/import/organisations')->assertOk()->assertJsonPath('data.1.value', $organisation->uid);
+
+        $file = UploadedFile::fake()->createWithContent('a.csv', 'name,batch
+Ann Roy,1962
+');
+        $url = $this->postJson('/community/members/import/preview', ['organisation_uid' => $organisation->uid, 'file' => $file])
+            ->assertOk()->json('redirect_url');
+        $this->get($url)->assertOk()->assertSee('1 new')->assertSee('id="community-member-import-confirm"', false);
+
+        $token = basename($url);
+        $this->postJson("/community/members/import/{$token}", ['on_duplicate' => 'skip'])
+            ->assertOk()->assertJsonPath('redirect_url', route('community.members.import.index'));
+        $this->assertSame(1, MemberRecord::count());
     }
 }

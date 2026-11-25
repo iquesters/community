@@ -4,11 +4,18 @@ namespace Iquesters\Community\Database\Seeders;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Iquesters\Community\Support\ApplicationForm;
+use Iquesters\Community\Support\ApplicationTable;
+use Iquesters\Community\Support\CommunityForms;
+use Iquesters\Community\Support\DecisionForm;
 use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\DirectoryPresets;
+use Iquesters\Community\Support\DirectoryTable;
 use Iquesters\Community\Support\OrganisationResolver;
 use Iquesters\Foundation\Database\Seeders\BaseSeeder;
+use Iquesters\Foundation\Models\Module;
 use Iquesters\Organisation\Models\Organisation;
+use Spatie\Permission\Models\Role;
 
 class CommunitySeeder extends BaseSeeder
 {
@@ -18,10 +25,30 @@ class CommunitySeeder extends BaseSeeder
 
     protected array $metas = [
         'module_icon' => 'fas fa-people-group',
+        // The module's Dashboard: admins get counts and their pages; others their membership.
+        'module_dashboard_view' => 'community::dashboard.module',
         'module_sidebar_menu' => [
+            [
+                'key' => 'membership',
+                'icon' => 'fas fa-id-card',
+                'label' => 'Membership',
+                'route' => 'community.membership',
+                // Apply and follow the application; the member's home once approved.
+                'permission' => self::USE_PERMISSION,
+            ],
+            [
+                'key' => 'directory',
+                'icon' => 'fas fa-users',
+                'label' => 'Directory',
+                // Opens the directory table (a members-only list, see DirectoryTable).
+                'route' => 'community.directory',
+                // Approved members (the member role) and admins.
+                'permission' => self::DIRECTORY_PERMISSION,
+            ],
             [
                 'icon' => 'fas fa-address-book',
                 'label' => 'Members',
+                'permission' => self::MANAGE_PERMISSION,
                 'table_schema' => [
                     'slug' => 'community-member-table',
                     'name' => 'Member records',
@@ -54,19 +81,79 @@ class CommunitySeeder extends BaseSeeder
                 ],
             ],
             [
-                'icon' => 'fas fa-user-check',
-                'label' => 'Applications',
-                'route' => 'community.applications.index',
-            ],
-            [
                 'icon' => 'fas fa-file-import',
                 'label' => 'Bulk upload',
                 'route' => 'community.members.import.index',
+                'permission' => self::MANAGE_PERMISSION,
             ],
         ],
     ];
 
+    /** Sees Members, Applications and Bulk upload (data is still limited to their organisations). */
+    public const MANAGE_PERMISSION = 'manage-community';
+
+    /** Sees Membership (apply, then the member's home). */
+    public const USE_PERMISSION = 'use-community';
+
+    /** Sees the member directory (given to the member role on approval). */
+    public const DIRECTORY_PERMISSION = 'view-member-directory';
+
+    /** Who sees the Community module at all (organisation admins use the "admin" role). */
+    public const MODULE_ROLES = ['super-admin', 'admin', 'user', 'member'];
+
+    /**
+     * The Applications item: the generic table (rows from community, see
+     * ApplicationTable), with its status filters as tabs. Added in run(), once
+     * the table's uid is known.
+     */
+    private function applicationsItem(string $tableUid): array
+    {
+        $tab = fn (string $key, string $icon, string $label, ?string $status) => array_filter([
+            'key' => $key,
+            'icon' => $icon,
+            'label' => $label,
+            'default-table-schema-uid' => $tableUid,
+            'params' => $status ? ['status' => $status] : null,
+        ]);
+
+        return [
+            'key' => 'applications',
+            'icon' => 'fas fa-user-check',
+            'label' => 'Applications',
+            'default-table-schema-uid' => $tableUid,
+            'permission' => self::MANAGE_PERMISSION,
+            // "Waiting" (applied and on hold) opens the table itself, so no "own page" tab is added.
+            'children' => [
+                $tab('waiting', 'fas fa-hourglass-half', 'Waiting', null),
+                $tab('on-hold', 'fas fa-circle-pause', 'On hold', 'on_hold'),
+                $tab('approved', 'fas fa-circle-check', 'Approved', 'approved'),
+                $tab('rejected', 'fas fa-circle-xmark', 'Rejected', 'rejected'),
+                $tab('all', 'fas fa-list', 'All', 'all'),
+            ],
+        ];
+    }
+
+    public function run(): void
+    {
+        // The member directory table (its sidebar item redirects to it).
+        DirectoryTable::sync();
+
+        // The Applications table first: the sidebar item and its tabs link to it.
+        $tableUid = ApplicationTable::sync();
+        if ($tableUid) {
+            $menu = $this->metas['module_sidebar_menu'];
+            // After Membership, Directory and Members.
+            array_splice($menu, 3, 0, [$this->applicationsItem($tableUid)]);
+            $this->metas['module_sidebar_menu'] = $menu;
+        }
+
+        parent::run();
+    }
+
     protected array $permissions = [
+        self::MANAGE_PERMISSION,
+        self::USE_PERMISSION,
+        self::DIRECTORY_PERMISSION,
         'view-member-records',
         'create-member-records',
         'edit-member-records',
@@ -84,12 +171,45 @@ class CommunitySeeder extends BaseSeeder
 
     protected function seedCustom(): void
     {
+        // The role approval gives (conf member_role), so admins can use it before the first approval.
+        $memberRole = trim((string) DirectoryFields::conf()->member_role);
+        if ($memberRole !== '') {
+            Role::findOrCreate($memberRole, 'web');
+        }
+
+        $this->seedAccess();
         $this->seedDefaultOrganisation();
         $this->seedDirectoryForm();
 
         // The entity API saves the directory's meta fields (batch, section…) only when listed on the entity.
         DirectoryFields::syncEntity();
+        // The application form follows the directory and proof settings: rebuilt on every seed.
+        ApplicationForm::sync();
+        CommunityForms::syncAll();
+        DecisionForm::sync();
         $this->relaxDefaultedColumns();
+    }
+
+    /**
+     * Who sees what: the module for super-admin, admin (organisation admins),
+     * user and member; "Membership" for everyone of them; the admin pages for
+     * super-admin (all permissions) and admin. Which organisations an admin
+     * manages is decided per request (CommunityAccess), not by these roles.
+     */
+    private function seedAccess(): void
+    {
+        $roles = collect(self::MODULE_ROLES)->mapWithKeys(fn (string $name) => [$name => Role::findOrCreate($name, 'web')]);
+
+        $roles['admin']->givePermissionTo([self::MANAGE_PERMISSION, self::USE_PERMISSION, self::DIRECTORY_PERMISSION]);
+        $roles['user']->givePermissionTo(self::USE_PERMISSION);
+        $roles['member']->givePermissionTo([self::USE_PERMISSION, self::DIRECTORY_PERMISSION]);
+        // Super-admin gets every module permission (BaseSeeder); it manages, it isn't a member.
+        $roles['super-admin']->revokePermissionTo([self::USE_PERMISSION, self::DIRECTORY_PERMISSION]);
+
+        $module = Module::where('name', $this->moduleName)->first();
+        if ($module) {
+            $module->assignRoles(collect($roles)->pluck('id')->all());
+        }
     }
 
     /**

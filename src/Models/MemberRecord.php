@@ -25,6 +25,9 @@ class MemberRecord extends Model
 
     public const SOURCE_REGISTRATION = 'registration';
 
+    /** An organisation admin, made a member automatically (AdminMemberships). */
+    public const SOURCE_ADMIN = 'admin';
+
     protected $table = 'member_records';
 
     protected $fillable = [

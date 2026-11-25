@@ -17,8 +17,10 @@ use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\MemberMatcher;
 use Iquesters\Community\Support\MemberValue;
 use Iquesters\Community\Support\ProofFields;
+use Iquesters\Foundation\Support\UserModel;
 use Iquesters\Foundation\System\Traits\Loggable;
 use Iquesters\Organisation\Models\Organisation;
+use Spatie\Permission\Models\Role;
 
 /**
  * Applications and their approval.
@@ -127,6 +129,8 @@ class MembershipService
 
             $membership->update(['member_record_id' => $record->id]);
             $this->decide($membership, Membership::STATUS_APPROVED, $note, $adminId);
+            $this->grantMemberRole($membership);
+            $this->joinOrganisation($membership);
         });
 
         static::logInfo('Membership approved', ['membership' => $membership->uid, 'admin_id' => $adminId, 'linked' => (bool) $linkRecordUid]);
@@ -254,6 +258,30 @@ class MembershipService
         }
 
         return $record;
+    }
+
+    /** Approved: the user also gets the member role (conf member_role); their other roles stay. */
+    private function grantMemberRole(Membership $membership): void
+    {
+        $role = trim((string) DirectoryFields::conf()->member_role);
+        $user = $membership->user_id ? UserModel::query()->find($membership->user_id) : null;
+
+        if ($role === '' || ! $user || ! method_exists($user, 'assignRole')) {
+            return;
+        }
+
+        Role::findOrCreate($role, 'web');
+        $user->assignRole($role);
+    }
+
+    /** Approved: the user belongs to the organisation (they can open its profile). */
+    private function joinOrganisation(Membership $membership): void
+    {
+        $user = $membership->user_id ? UserModel::query()->find($membership->user_id) : null;
+
+        if ($user && method_exists($user, 'organisations')) {
+            $user->organisations()->syncWithoutDetaching([$membership->organisation_id]);
+        }
     }
 
     private function assertCanMove(Membership $membership, string $status): void

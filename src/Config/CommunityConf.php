@@ -38,6 +38,12 @@ class CommunityConf extends BaseConf
     /** Whether people can apply for membership themselves (Apply page). */
     protected bool $self_registration;
 
+    /** Directory fields members see of each other, besides the name (comma-separated ids). Contact details stay private. */
+    protected string $directory_public_fields;
+
+    /** Role given on approval (added to the user's roles; sign-up keeps its own, e.g. "user"). Empty: none. */
+    protected string $member_role;
+
     /**
      * Proof asked for when applying. Each: id, label, kind (identifier | file),
      * required, and for files: types (comma-separated extensions) and max_kb.
@@ -55,6 +61,8 @@ class CommunityConf extends BaseConf
         $default_values->match_keys = 'email,phone,batch+name';
         $default_values->import_max_rows = 5000;
         $default_values->self_registration = true;
+        $default_values->member_role = 'member';
+        $default_values->directory_public_fields = 'batch,section';
         $default_values->proof_fields = [
             ['id' => 'registration_number', 'label' => 'School registration number', 'kind' => 'identifier', 'required' => false],
             ['id' => 'proof_document', 'label' => 'Proof (e.g. leaving certificate or old ID card)', 'kind' => 'file', 'required' => false, 'types' => 'pdf,jpg,jpeg,png', 'max_kb' => 5120],
@@ -73,6 +81,8 @@ class CommunityConf extends BaseConf
             'match_keys' => 'string|max:255',
             'import_max_rows' => 'integer|min:1|max:50000',
             'self_registration' => 'boolean',
+            'member_role' => 'nullable|string|max:125',
+            'directory_public_fields' => 'nullable|string|max:255',
             'proof_fields' => 'array|max:10',
         ];
     }

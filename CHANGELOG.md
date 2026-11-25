@@ -5,9 +5,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Membership and Apply pages use the full content width** like every other page, instead of a narrow centred column with an empty gap beside the sidebar.
+
+### Changed (admins and members)
+- **Organisation admins are members of their organisations** without applying: an approved membership (history note "Organisation admin"), a member record from their account (source `admin`) and the `member` role. Created when they open community (dashboard card, Membership, Directory) and by **`community:sync-admins`** for existing admins. They pay membership fees like other members.
+- **Super-admins aren't members:** no Membership card on the dashboard, no Membership / Directory items (the seeder takes `use-community` and `view-member-directory` from the super-admin role), and `/community/membership` opens Community's dashboard. They still manage every organisation's members.
+
+### Changed (every form is a form schema)
+- **Bulk upload** uses the `community-member-import` form schema (organisation, CSV file) → JSON → the preview has its own address (`/community/members/import/{token}`) with the `community-member-import-confirm` form schema; a plain form post still works.
+- **Membership's organisation choice** (multiple organisations) uses `community-organisation-choice`.
+- **Directory** is a generic table (`community-directory-table`, rows from `/community/directory/data`): approved members of the viewer's organisation, name and public fields; the table's search matches the name or a public field (e.g. the batch). `/community/directory` opens it (non-members go to Membership).
+- Application and Proof sections in the application form.
+
+### Changed (member pages)
+- **Membership, for a member,** shows only their membership: the organisation (with a link to its profile), member since, and the details on record. The directory left this page.
+- **Directory** (`/community/directory`, new sidebar item, permission `view-member-directory` for the `member` role and admins): approved members of their organisation as cards, searchable by name and filtered by a public field. Non-members are sent to Membership.
+
+### Changed (Applications on the generic table)
+- **Community → Applications is the generic table** (`community-application-table`, table and split modes, search, sort, paging, list URLs), with tabs Waiting / On hold / Approved / Rejected / All (`?status=`).
+- Rows come from **`GET /community/applications/data`** (user-interface's table `data_url`), limited to the organisations the admin manages (and to the one worked in, if chosen); a record from `/community/applications/data/{uid}`.
+- **The record shows as sections:** the application (application form, view mode), the proof files (open in the browser), the decision form while the application is open, and the history. Saving a decision reloads the record in place and refreshes the list.
+- The decision answers JSON without a redirect; the form engine shows the toast.
+- `/community/applications` and `/community/applications/{uid}` redirect to the table (and the open record). The old pages are gone.
+- Needs user-interface's `data_url` and record sections.
+
+### Changed (application review page)
+- **The application** shows as the application form in view mode (form schema), like other records.
+- **The decision is a form schema** (`community-application-decision`, rebuilt by `community:seed`): "Matching records" (radio; options from `GET /community/applications/{uid}/matches`, one clear match preselected), Approve / Hold / Reject, and the note. Errors show under the fields (e.g. a missing note for hold or reject); the outcome is a toast after the redirect.
+- **Proof files open in the browser** (images as thumbnails; PDFs in a new tab); `?download=1` downloads.
+- Needs user-interface's `{uid}` support in `optionsFrom.url`.
+
+### Changed (one Membership page, application form on a form schema)
+- **One page:** `/community/membership` is where people apply, follow their application and, once approved, find their member home. `/community/apply` redirects there.
+- **The application form is a form schema** (`community-membership-application`), drawn by user-interface's form engine like the rest of the app: the directory fields, then the proof fields (`proof__{id}`; files upload as multipart). `community:seed` rebuilds it from the directory form and `proof_fields`, so change those, not this form.
+- It posts to `POST /community/membership`: JSON for the form engine (errors under each field, `redirect_url` on success), a redirect for a plain form post.
+
+### Added (roles and access)
+- **Organisation context** (organisation module's header switcher): the apply page, the approval queue and the bulk upload default to the organisation the user works in; the queue then lists only that organisation's applications.
+- **Who sees what:** the Community module is shown to `super-admin`, `admin`, `user` and `member`.
+  - **Membership** (`/community/membership`, permission `use-community`): apply and follow the application; once approved, the **member's home**: their membership and the **member directory** (approved members of their organisation; name plus `directory_public_fields`, default batch and section; searchable; email and phone stay private).
+  - **Members, Applications, Bulk upload** (permission `manage-community`): super-admins and **organisation admins**, each limited to the organisations they manage: queue, decisions, matching, uploads and proof downloads. Another organisation's application answers 404.
+- **Organisation admins** (`CommunityAccess`): Track B's `TenantAuthorization` (explicit `organisation_role_assignments`) when that table exists; until then, a user with the `admin` role manages the organisations they belong to (logged once as a warning).
+- Admin pages use the new `ensure.community.manager` middleware instead of `ensure.admin` (super-admin only since Track B).
+- **Community's Dashboard:** admins see counts (waiting applications, members) and their pages; everyone sees their membership card.
+- Settings: `directory_public_fields`.
+- **Approval adds the user to the organisation** (`model_has_organisations`), so members can open its profile (organisation module).
+- Organisation admins are decided by the organisation module's `OrganisationAccess` when it is installed, so both modules agree; super-admins always reach the admin pages, even before any organisation exists.
+
 ### Added (step 2: registration and approval)
 - **Apply** (`/community/apply`, any signed-in user): the directory fields (same rules as bulk upload) plus proof: identifiers (e.g. registration number) and files. In multiple-organisation mode the person picks the organisation first. The page then shows the application's status, the administrator's note, and the form again when it is on hold or was rejected.
-- **Approval queue** (Community → Applications, `ensure.admin`): tabs Waiting / Applied / On hold / Approved / Rejected / All; each application with its data, proof and **matching records** (by the match keys), and:
+- **Approval queue** (Community → Applications, `ensure.admin`): navigation tabs Waiting (applied and on hold) / On hold / Approved / Rejected / All (managed in Admin → Navigation); each application with its data, proof and **matching records** (by the match keys), and:
   - **Approve**, linking the account to a matching record (the school's data stays as it is), or creating a record from the application (source `registration`);
   - **Hold** with a note: the applicant updates the application and sends it again;
   - **Reject** with a note; the person can apply again with a new application.
@@ -15,7 +63,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Statuses** `applied`, `on_hold`, `approved`, `rejected`, with allowed moves only; every change is kept (who, when, note). Payment comes after approval, in a later step.
 - Tables `memberships` (one per person per organisation), `membership_status_histories`, `application_proofs`; models `Membership`, `MembershipStatusHistory`, `ApplicationProof`; `MembershipService`.
 - **Proof files are private:** stored on the `local` disk under `community/proofs/{membership}`, downloaded only by the applicant or a super-admin (`/community/proofs/{uid}`; anyone else gets 404).
-- Settings: `self_registration` (default on) and `proof_fields` (registration number, and a PDF/JPG/PNG up to 5 MB, both optional by default).
+- **Approval makes the user a member:** the role in `member_role` (default `member`, created by `community:seed`) is added; the sign-up role (e.g. `user`) stays.
+- **"Apply for membership" on the dashboard:** a Membership card (registered as a `dashboard-cards` service; user-management's dashboard shows them) while the community module is on: Apply, or where the application is (waiting, update it, see why), or "You're a member". In single-organisation mode it disappears from Apply once there is a membership, until a rejection.
+- Settings: `self_registration` (default on), `member_role` (default `member`) and `proof_fields` (registration number, and a PDF/JPG/PNG up to 5 MB, both optional by default).
 - Directory validation rules moved to `DirectoryFields::rulesFor()`, shared by bulk upload and applications.
 
 ### Added (step 1: directory and bulk upload)

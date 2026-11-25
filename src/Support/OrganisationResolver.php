@@ -19,16 +19,34 @@ class OrganisationResolver
         return DirectoryFields::conf()->organisation_mode === 'multiple';
     }
 
-    /** Organisations an admin can pick (multiple mode). */
-    public static function choices(): Collection
+    /**
+     * Organisations to pick from (multiple mode). $allowedIds: only these
+     * (an organisation admin's); null: every active one.
+     */
+    public static function choices(?array $allowedIds = null): Collection
     {
-        return Organisation::query()->where('status', 'active')->orderBy('name')->get(['id', 'uid', 'name']);
+        return Organisation::query()
+            ->where('status', 'active')
+            ->when($allowedIds !== null, fn ($q) => $q->whereIn('id', $allowedIds))
+            ->orderBy('name')
+            ->get(['id', 'uid', 'name']);
     }
 
     /**
      * @throws \InvalidArgumentException when multiple mode gets no or an unknown organisation, or there is no organisation at all
      */
-    public static function resolve(?string $organisationUid): Organisation
+    public static function resolve(?string $organisationUid, ?array $allowedIds = null): Organisation
+    {
+        $organisation = self::find($organisationUid);
+
+        if ($allowedIds !== null && ! in_array((int) $organisation->id, $allowedIds, true)) {
+            throw new \InvalidArgumentException("You don't manage this organisation.");
+        }
+
+        return $organisation;
+    }
+
+    private static function find(?string $organisationUid): Organisation
     {
         if (self::isMultiple()) {
             $organisation = $organisationUid
@@ -49,6 +67,14 @@ class OrganisationResolver
         }
 
         return $organisation;
+    }
+
+    /** The organisation the user works in (organisation module's context), if any. */
+    public static function context(): ?Organisation
+    {
+        $class = 'Iquesters\\Organisation\\Support\\OrganisationContext';
+
+        return class_exists($class) && app()->bound($class) ? app($class)->current() : null;
     }
 
     /** Single mode: the configured organisation, else the first active one. */
@@ -74,9 +100,11 @@ class OrganisationResolver
      *
      * @return array<int, array{value: int|string, label: string}>
      */
-    public static function options(): array
+    public static function options(?array $allowedIds = null): array
     {
-        $organisations = self::isMultiple() ? self::choices() : collect([self::default()])->filter();
+        $organisations = (self::isMultiple() ? self::choices() : collect([self::default()])->filter())
+            ->when($allowedIds !== null, fn ($list) => $list->whereIn('id', $allowedIds))
+            ->values();
 
         if ($organisations->isEmpty()) {
             return [['value' => '', 'label' => 'No organisation yet. Create one first (Organisations → New)']];

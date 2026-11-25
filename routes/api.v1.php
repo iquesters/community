@@ -12,7 +12,8 @@
 use Illuminate\Support\Facades\Route;
 use Iquesters\Community\Http\Controllers\Api\MemberImportApiController;
 
-Route::middleware(['auth:sanctum', 'ensure.admin'])->group(function () {
+// Super-admins and organisation admins, limited to their organisations.
+Route::middleware(['auth:sanctum', 'ensure.community.manager'])->group(function () {
     Route::get('directory/fields', [MemberImportApiController::class, 'fields'])->name('directory.fields');
     Route::get('organisations', [MemberImportApiController::class, 'organisations'])->name('organisations');
 
