@@ -25,6 +25,9 @@ class MemberRecord extends Model
 
     public const SOURCE_REGISTRATION = 'registration';
 
+    /** An organisation admin, made a member automatically (AdminMemberships). */
+    public const SOURCE_ADMIN = 'admin';
+
     protected $table = 'member_records';
 
     protected $fillable = [
@@ -45,6 +48,12 @@ class MemberRecord extends Model
         static::creating(function (self $record) {
             $record->uid ??= (string) Str::ulid();
         });
+    }
+
+    /** What they completed at the school: levels and years (ICSE 2003, ISC 2005), or the class they left after. */
+    public function schoolRecords(): HasMany
+    {
+        return $this->hasMany(MemberSchoolRecord::class);
     }
 
     public function metas(): HasMany

@@ -8,11 +8,14 @@ use Iquesters\Community\Database\Seeders\CommunitySeeder;
 use Iquesters\Community\Models\MemberRecord;
 use Iquesters\Community\Services\Import\MemberImportService;
 use Iquesters\Community\Support\DirectoryFields;
+use Iquesters\Community\Support\SchoolLevels;
 use Iquesters\Community\Tests\TestCase;
 use Iquesters\Organisation\Models\Organisation;
 
 /**
- * Bulk upload with the default (alumni) directory: name, email, phone, batch, section, roll number, house.
+ * Bulk upload with the default (alumni) directory: name, email, phone, section, roll number, house,
+ * plus the school record columns (Level, Year, Class left, Stream; an older "batch" column is the
+ * year of the first level, ICSE).
  */
 class MemberImportTest extends TestCase
 {
@@ -43,8 +46,10 @@ class MemberImportTest extends TestCase
             MemberImportService::STATUS_ERROR,          // no name
             MemberImportService::STATUS_DUPLICATE_IN_FILE,
             MemberImportService::STATUS_EXISTING,
-            MemberImportService::STATUS_ERROR,          // batch is required
+            MemberImportService::STATUS_VALID,          // no school year: allowed (added later)
         ], $statuses);
+        $this->assertSame([['level' => 'icse', 'year' => 1962, 'class_left' => null, 'stream' => null]], $preview['rows'][0]['data']['school_records']);
+        $this->assertSame('ICSE 1962', $preview['rows'][0]['data']['school']);
 
         $this->assertSame('ann@example.test', $preview['rows'][0]['data']['email']);
         $this->assertSame('+919830012345', $preview['rows'][0]['data']['phone']);
@@ -56,9 +61,9 @@ class MemberImportTest extends TestCase
     public function test_a_file_without_a_required_column_is_refused(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Batch');
+        $this->expectExceptionMessage('Full name');
 
-        $this->service()->preview($this->csv(['name,email', 'Ann Roy,ann@example.test']), null, 1);
+        $this->service()->preview($this->csv(['email,year', 'ann@example.test,1962']), null, 1);
     }
 
     public function test_import_creates_valid_rows_with_their_meta_fields(): void
@@ -77,14 +82,15 @@ class MemberImportTest extends TestCase
         $this->assertSame($organisation->id, $record->organisation_id);
         $this->assertSame(MemberRecord::SOURCE_BULK_UPLOAD, $record->source);
         $this->assertSame(7, (int) $record->created_by);
-        $this->assertSame(['batch' => '1962', 'roll_number' => '12'], $record->metaValues());
+        $this->assertSame(['roll_number' => '12'], $record->metaValues());
+        $this->assertSame('ICSE 1962', SchoolLevels::describe($organisation, $record->schoolRecords));
     }
 
     public function test_existing_records_are_skipped_or_updated(): void
     {
         $organisation = $this->makeOrganisation();
         $record = MemberRecord::create(['organisation_id' => $organisation->id, 'name' => 'Ann Roy', 'email' => 'ann@example.test']);
-        $record->setMetaValue('batch', '1962');
+        SchoolLevels::attach($record, [['level' => 'icse', 'year' => 1962]]);
         $file = ['name,email,batch,section', 'Ann Roy,ann@example.test,1962,C'];
 
         $skip = $this->service()->preview($this->csv($file), $organisation, 1);
@@ -113,7 +119,7 @@ class MemberImportTest extends TestCase
         $this->actingAs($this->makeUser('user'))->get('/community/members/import')->assertForbidden();
 
         $admin = $this->makeUser('super-admin');
-        $this->actingAs($admin)->get('/community/members/import')->assertOk()->assertSee('Batch (passing year)');
+        $this->actingAs($admin)->get('/community/members/import')->assertOk()->assertSee('Roll number');
         $this->get('/community/members/import/template')->assertOk()->assertHeader('content-type', 'text/csv; charset=UTF-8');
     }
 
@@ -147,7 +153,7 @@ class MemberImportTest extends TestCase
 
         $this->getJson('/api/community/v1/directory/fields')->assertOk()
             ->assertJsonPath('response_schema.data.organisation_mode', 'single')
-            ->assertJsonPath('response_schema.data.match_keys', ['email', 'phone', 'batch+name']);
+            ->assertJsonPath('response_schema.data.match_keys', ['email', 'phone', 'school+name']);
 
         $file = UploadedFile::fake()->createWithContent('a.csv', "name,batch\nAnn Roy,1962\n");
         $token = $this->postJson('/api/community/v1/member-records/import/preview', ['file' => $file])
@@ -195,7 +201,7 @@ class MemberImportTest extends TestCase
         // Upload page: a notice instead of the form.
         $this->get('/community/members/import')->assertOk()
             ->assertSee('No organisation yet')
-            ->assertDontSee('name="file"', false);
+            ->assertDontSee('id="community-member-import"', false);
 
         // The form's organisation select: one option saying why.
         $this->getJson('/api/community/v1/organisations')->assertOk()
@@ -204,17 +210,77 @@ class MemberImportTest extends TestCase
             ->assertJsonCount(1, 'response_schema.data');
 
         $this->makeOrganisation();
-        $this->get('/community/members/import')->assertOk()->assertSee('name="file"', false);
+        $this->get('/community/members/import')->assertOk()->assertSee('id="community-member-import"', false);
     }
 
     public function test_the_seeder_creates_a_default_organisation_in_single_mode_only_when_none_exists(): void
     {
+        // Named by the setting default_organisation_name (default iq-test-org), not APP_NAME.
         config(['app.name' => 'TTVians Alumni']);
         $this->seed(CommunitySeeder::class);
-        $this->assertSame(['TTVians Alumni'], Organisation::pluck('name')->all());
+        $this->assertSame(['iq-test-org'], Organisation::pluck('name')->all());
 
         // Seeding again doesn't add another.
         $this->seed(CommunitySeeder::class);
         $this->assertSame(1, Organisation::count());
+    }
+
+    public function test_the_icse_and_isc_registers_merge_into_one_record(): void
+    {
+        $organisation = $this->makeOrganisation();
+
+        // The ICSE register first.
+        $icse = $this->service()->preview($this->csv(['Full name,Level,Year,Section', 'Ann Roy,ICSE,2003,A', 'Cid Das,Left,1998,']), $organisation, 1);
+        $this->assertSame(MemberImportService::STATUS_ERROR, $icse['rows'][1]['status']); // "Left" needs the class
+        $this->assertStringContainsString('class you left after', $icse['rows'][1]['errors'][0]);
+        $this->service()->import($icse['token'], 1);
+
+        // Then the ISC register: Ann matches her ICSE record (same name, the other level two years apart).
+        $isc = $this->service()->preview($this->csv([
+            'Full name,Level,Year,Stream,Class left',
+            'Ann Roy,ISC (Class 12),2005,Science,',
+            'Ben Paul,isc,2003,,',          // ISC began in 2005
+            'Cid Das,Left,1998,,8',
+        ]), $organisation, 1);
+        $this->assertSame(MemberImportService::STATUS_EXISTING, $isc['rows'][0]['status']);
+        $this->assertSame(['school+name'], $isc['rows'][0]['matches'][0]['keys']);
+        $this->assertSame(MemberImportService::STATUS_ERROR, $isc['rows'][1]['status']);
+        $this->assertStringContainsString('started in 2005', $isc['rows'][1]['errors'][0]);
+        $this->assertSame(MemberImportService::STATUS_VALID, $isc['rows'][2]['status']);
+
+        $this->assertSame(['created' => 1, 'updated' => 1, 'skipped' => 0, 'failed' => 1], $this->service()->import($isc['token'], 1, MemberImportService::ON_DUPLICATE_UPDATE));
+
+        $ann = MemberRecord::where('name', 'Ann Roy')->sole();
+        $this->assertSame('ICSE 2003 · ISC 2005 (Science)', SchoolLevels::describe($organisation, $ann->schoolRecords));
+        $this->assertSame('Left after Class 8, 1998', SchoolLevels::describe($organisation, MemberRecord::where('name', 'Cid Das')->sole()->schoolRecords));
+    }
+
+    public function test_an_unknown_level_is_an_error_and_the_template_has_the_school_columns(): void
+    {
+        $preview = $this->service()->preview($this->csv(['name,level,year', 'Ann Roy,CBSE,2003']), $this->makeOrganisation(), 1);
+
+        $this->assertSame(MemberImportService::STATUS_ERROR, $preview['rows'][0]['status']);
+        $this->assertStringContainsString("isn't one of this school's levels (ICSE, ISC, Left before finishing)", $preview['rows'][0]['errors'][0]);
+        $this->assertSame(['Level', 'Year', 'Class left', 'Stream'], array_slice($this->service()->templateHeader(), -4));
+    }
+
+    public function test_the_upload_form_engine_flow_gets_json(): void
+    {
+        $organisation = $this->makeOrganisation();
+        $this->actingAs($this->makeUser('super-admin'));
+
+        $this->getJson('/community/members/import/organisations')->assertOk()->assertJsonPath('data.1.value', $organisation->uid);
+
+        $file = UploadedFile::fake()->createWithContent('a.csv', 'name,batch
+Ann Roy,1962
+');
+        $url = $this->postJson('/community/members/import/preview', ['organisation_uid' => $organisation->uid, 'file' => $file])
+            ->assertOk()->json('redirect_url');
+        $this->get($url)->assertOk()->assertSee('1 new')->assertSee('id="community-member-import-confirm"', false);
+
+        $token = basename($url);
+        $this->postJson("/community/members/import/{$token}", ['on_duplicate' => 'skip'])
+            ->assertOk()->assertJsonPath('redirect_url', route('community.members.import.index'));
+        $this->assertSame(1, MemberRecord::count());
     }
 }

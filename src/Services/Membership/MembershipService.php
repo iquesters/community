@@ -17,8 +17,11 @@ use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\MemberMatcher;
 use Iquesters\Community\Support\MemberValue;
 use Iquesters\Community\Support\ProofFields;
+use Iquesters\Community\Support\SchoolLevels;
+use Iquesters\Foundation\Support\UserModel;
 use Iquesters\Foundation\System\Traits\Loggable;
 use Iquesters\Organisation\Models\Organisation;
+use Spatie\Permission\Models\Role;
 
 /**
  * Applications and their approval.
@@ -63,7 +66,7 @@ class MembershipService
             throw new \DomainException('Your application is waiting for a decision.');
         }
 
-        $clean = $this->validated($data, $proofs);
+        $clean = $this->validated($data, $proofs, $organisation);
         $userId = (int) $user->getAuthIdentifier();
 
         $membership = DB::transaction(function () use ($current, $organisation, $clean, $proofs, $userId) {
@@ -127,6 +130,8 @@ class MembershipService
 
             $membership->update(['member_record_id' => $record->id]);
             $this->decide($membership, Membership::STATUS_APPROVED, $note, $adminId);
+            $this->grantMemberRole($membership);
+            $this->joinOrganisation($membership);
         });
 
         static::logInfo('Membership approved', ['membership' => $membership->uid, 'admin_id' => $adminId, 'linked' => (bool) $linkRecordUid]);
@@ -154,8 +159,11 @@ class MembershipService
     }
 
     /** @return array<string, ?string> the directory values, normalised */
-    private function validated(array $data, array $proofs): array
+    private function validated(array $data, array $proofs, ?Organisation $organisation = null): array
     {
+        // What they completed at the school (required), reported with the other fields.
+        [$schoolRecords, $schoolErrors] = SchoolLevels::validate($organisation, (array) ($data['school_records'] ?? []));
+
         $fields = DirectoryFields::all();
         $input = [];
         foreach ($fields as $field) {
@@ -170,9 +178,21 @@ class MembershipService
             $attributes[$field['id']] = $field['label'];
         }
 
-        Validator::make($input + ['proof' => $proofs], $rules + ProofFields::rules(), [], $attributes)->validate();
+        $validator = Validator::make($input + ['proof' => $proofs], $rules + ProofFields::rules(), [], $attributes);
+        $validator->after(function ($validator) use ($schoolErrors) {
+            foreach ($schoolErrors as $key => $message) {
+                $validator->errors()->add($key, $message);
+            }
+        });
+        $validator->validate();
 
-        return $input;
+        return $input + ['school_records' => $schoolRecords];
+    }
+
+    /** A member's proof from their details form (identifiers replaced, new files added). */
+    public function saveProofs(Membership $membership, array $proofs): void
+    {
+        $this->storeProofs($membership, $proofs);
     }
 
     private function storeProofs(Membership $membership, array $proofs): void
@@ -225,8 +245,12 @@ class MembershipService
             throw new \DomainException('That record is already linked to another person.');
         }
 
-        // The school's data stays as it is; only the login is linked.
+        // The school's data stays as it is; only the login is linked, and levels the
+        // record doesn't have yet are added from the application (e.g. their ISC year).
         $record->update(['user_id' => $membership->user_id, 'updated_by' => auth()->id() ?? 0]);
+        $have = $record->schoolRecords()->pluck('level')->all();
+        SchoolLevels::attach($record, collect((array) ($membership->application_data['school_records'] ?? []))
+            ->reject(fn ($r) => in_array($r['level'] ?? null, $have, true))->values()->all(), auth()->id());
 
         return $record;
     }
@@ -252,8 +276,43 @@ class MembershipService
                 $record->setMetaValue($field['id'], (string) $value, $adminId);
             }
         }
+        SchoolLevels::attach($record, (array) ($data['school_records'] ?? []), $adminId);
 
         return $record;
+    }
+
+    /** Approved: the user also gets the member role (conf member_role); their other roles stay. */
+    private function grantMemberRole(Membership $membership): void
+    {
+        $role = trim((string) DirectoryFields::conf()->member_role);
+        $user = $membership->user_id ? UserModel::query()->find($membership->user_id) : null;
+
+        if ($role === '' || ! $user || ! method_exists($user, 'assignRole')) {
+            return;
+        }
+
+        Role::findOrCreate($role, 'web');
+        $user->assignRole($role);
+    }
+
+    /** Approved: the user belongs to the organisation (they can open its profile). */
+    private function joinOrganisation(Membership $membership): void
+    {
+        $user = $membership->user_id ? UserModel::query()->find($membership->user_id) : null;
+
+        if (! $user || ! method_exists($user, 'organisations')) {
+            return;
+        }
+
+        // As a member: approval never makes anyone an organisation admin (an
+        // org-admin elsewhere keeps only that). An existing role here is kept.
+        $roles = 'Iquesters\\Organisation\\Support\\OrganisationRoles';
+        $organisation = $membership->organisation;
+        if ($organisation && class_exists($roles) && $roles::available()) {
+            $roles::join($user, $organisation);
+        } else {
+            $user->organisations()->syncWithoutDetaching([$membership->organisation_id]);
+        }
     }
 
     private function assertCanMove(Membership $membership, string $status): void

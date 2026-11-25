@@ -14,12 +14,6 @@
                     At most {{ number_format($maxRows) }} rows per file.
                 </p>
 
-                @if (session('error'))
-                    <div class="alert alert-danger py-2 small">{{ session('error') }}</div>
-                @endif
-                @if (session('success'))
-                    <div class="alert alert-success py-2 small">{{ session('success') }}</div>
-                @endif
 
                 @if (! $hasOrganisation)
                     <div class="alert alert-warning small mb-0" role="alert">
@@ -30,35 +24,14 @@
                         @endif
                     </div>
                 @else
-                <form method="POST" action="{{ route('community.members.import.preview') }}" enctype="multipart/form-data" class="d-grid gap-3">
-                    @csrf
-
-                    @if ($multiple)
-                        <div>
-                            <label for="organisation_uid" class="form-label small">Organisation</label>
-                            <select id="organisation_uid" name="organisation_uid" class="form-select form-select-sm" required>
-                                <option value="">Choose…</option>
-                                @foreach ($organisations as $organisation)
-                                    <option value="{{ $organisation->uid }}" @selected(old('organisation_uid') === $organisation->uid)>{{ $organisation->name }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                    @endif
-
-                    <div>
-                        <label for="file" class="form-label small">CSV file</label>
-                        <input id="file" type="file" name="file" accept=".csv,text/csv" class="form-control form-control-sm @error('file') is-invalid @enderror" required>
-                        @error('file')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        <div class="form-text">From Excel: File → Save As → "CSV UTF-8".</div>
-                    </div>
-
-                    <div class="d-flex justify-content-between align-items-center">
-                        <a href="{{ route('community.members.import.template') }}" class="small">
-                            <i class="fas fa-fw fa-download"></i> Download the template
-                        </a>
-                        <button type="submit" class="btn btn-sm btn-outline-primary">Preview</button>
-                    </div>
-                </form>
+                {{-- Form schema community-member-import (organisation, CSV file). --}}
+                @include('userinterface::components.form', [
+                    'id' => $formId,
+                    'formData' => json_encode($formData),
+                ])
+                <a href="{{ route('community.members.import.template') }}" class="small d-inline-block mt-2">
+                    <i class="fas fa-fw fa-download"></i> Download the template
+                </a>
                 @endif
             </div>
         </div>

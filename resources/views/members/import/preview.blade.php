@@ -29,21 +29,16 @@
                     <span class="text-danger">{{ $summary['errors'] }} with errors</span>.
                 </div>
 
-                <form method="POST" action="{{ route('community.members.import.store', $preview['token']) }}" class="d-flex flex-wrap gap-2 align-items-center">
-                    @csrf
-                    @if ($summary['existing'] > 0)
-                        <select name="on_duplicate" class="form-select form-select-sm w-auto" aria-label="Rows that already exist">
-                            <option value="{{ Import::ON_DUPLICATE_SKIP }}">Skip rows that already exist</option>
-                            <option value="{{ Import::ON_DUPLICATE_UPDATE }}">Update the existing record (one match only)</option>
-                        </select>
-                    @else
-                        <input type="hidden" name="on_duplicate" value="{{ Import::ON_DUPLICATE_SKIP }}">
-                    @endif
-                    <a href="{{ route('community.members.import.index') }}" class="btn btn-sm btn-outline-secondary">Cancel</a>
-                    <button type="submit" class="btn btn-sm btn-primary" @disabled($summary['valid'] + $summary['existing'] === 0)>
-                        Import {{ $summary['valid'] }} new
-                    </button>
-                </form>
+                <div class="d-flex flex-wrap gap-2 align-items-end" style="min-width: min(100%, 22rem);">
+                    <div class="flex-grow-1">
+                        {{-- Form schema community-member-import-confirm. --}}
+                        @include('userinterface::components.form', [
+                            'id' => \Iquesters\Community\Support\CommunityForms::IMPORT_CONFIRM,
+                            'entity_uid' => $preview['token'],
+                            'formData' => json_encode(['on_duplicate' => 'skip']),
+                        ])
+                    </div>
+                </div>
             </div>
 
             @if ($preview['unknown_columns'])

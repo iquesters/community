@@ -10,6 +10,7 @@ use Iquesters\Community\Models\MemberRecord;
 use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\MemberMatcher;
 use Iquesters\Community\Support\MemberValue;
+use Iquesters\Community\Support\SchoolLevels;
 use Iquesters\Organisation\Models\Organisation;
 
 /**
@@ -37,6 +38,17 @@ class MemberImportService
 
     public const ON_DUPLICATE_UPDATE = 'update';
 
+    /**
+     * School record columns (not directory fields): what the person completed at
+     * the school. "Batch" (older files) is the year of the organisation's first level.
+     */
+    public const SCHOOL_COLUMNS = [
+        ['id' => 'school_level', 'label' => 'Level'],
+        ['id' => 'school_year', 'label' => 'Year'],
+        ['id' => 'school_class_left', 'label' => 'Class left'],
+        ['id' => 'school_stream', 'label' => 'Stream'],
+    ];
+
     private const CACHE_PREFIX = 'community.member-import.';
 
     private const TTL_MINUTES = 30;
@@ -56,7 +68,12 @@ class MemberImportService
             throw new \InvalidArgumentException('The file has '.count($lines)." rows; at most {$max} can be uploaded at once.");
         }
 
-        [$columns, $unknown] = $this->mapColumns($header, $fields);
+        [$columns, $unknown] = $this->mapColumns($header, [
+            ...$fields,
+            ...self::SCHOOL_COLUMNS,
+            ['id' => 'school_year', 'label' => 'Batch (passing year)'],
+            ['id' => 'school_year', 'label' => 'batch'],
+        ]);
         $missing = collect($fields)->where('required', true)->pluck('id')->diff(array_values($columns))->values()->all();
         if ($missing !== []) {
             $labels = collect($fields)->whereIn('id', $missing)->pluck('label')->implode(', ');
@@ -74,7 +91,12 @@ class MemberImportService
                 $data[$fieldId] = MemberValue::forField($fieldId, $cells[$position] ?? null);
             }
 
+            $school = array_intersect_key($data, array_flip(array_column(self::SCHOOL_COLUMNS, 'id')));
+            $data = array_diff_key($data, $school);
             $errors = $this->validate($data, $fields);
+            [$data['school_records'], $schoolErrors] = $this->schoolRecords($organisation, $school);
+            $errors = [...$errors, ...$schoolErrors];
+            $data['school'] = SchoolLevels::describe($organisation, $data['school_records']);
             $status = $errors ? self::STATUS_ERROR : self::STATUS_VALID;
             $duplicateOf = null;
             $matches = [];
@@ -116,8 +138,12 @@ class MemberImportService
         $preview = [
             'token' => (string) Str::ulid(),
             'organisation' => $organisation ? ['id' => $organisation->id, 'uid' => $organisation->uid, 'name' => $organisation->name] : null,
-            'columns' => collect($fields)->whereIn('id', array_values($columns))
-                ->map(fn ($f) => ['id' => $f['id'], 'label' => $f['label']])->values()->all(),
+            'columns' => [
+                ...collect($fields)->whereIn('id', array_values($columns))
+                    ->map(fn ($f) => ['id' => $f['id'], 'label' => $f['label']])->values()->all(),
+                ...(array_intersect(array_values($columns), array_column(self::SCHOOL_COLUMNS, 'id')) !== []
+                    ? [['id' => 'school', 'label' => 'School']] : []),
+            ],
             'unknown_columns' => $unknown,
             'missing_columns' => [],
             'rows' => $rows,
@@ -184,7 +210,7 @@ class MemberImportService
     /** CSV header for the template download. */
     public function templateHeader(): array
     {
-        return collect(DirectoryFields::all())->pluck('label')->all();
+        return [...collect(DirectoryFields::all())->pluck('label')->all(), ...array_column(self::SCHOOL_COLUMNS, 'label')];
     }
 
     private function create(array $data, array $fields, ?int $organisationId, int $userId): MemberRecord
@@ -201,6 +227,7 @@ class MemberImportService
         ]);
 
         $this->writeMetas($record, $data, $fields, $userId);
+        SchoolLevels::attach($record, (array) ($data['school_records'] ?? []), $userId);
 
         return $record;
     }
@@ -212,6 +239,8 @@ class MemberImportService
         $record->fill($main + ['updated_by' => $userId])->save();
 
         $this->writeMetas($record, $data, $fields, $userId);
+        // E.g. the ISC register after the ICSE one: the person gets their second record.
+        SchoolLevels::attach($record, (array) ($data['school_records'] ?? []), $userId);
     }
 
     /** Meta fields with a value; a blank cell writes nothing (and keeps an existing value on update). */
@@ -312,6 +341,38 @@ class MemberImportService
         }
 
         return Validator::make($data, $rules, [], $attributes)->errors()->all();
+    }
+
+    /**
+     * The row's school record: Level (key or label; empty: the first level), Year,
+     * Class left (for "Left"), Stream. None when the row has no year and no level.
+     *
+     * @return array{0: array, 1: string[]}
+     */
+    private function schoolRecords(?Organisation $organisation, array $cells): array
+    {
+        $level = $cells['school_level'] ?? null;
+        $year = $cells['school_year'] ?? null;
+        if (($level === null || $level === '') && ($year === null || $year === '')) {
+            return [[], []];
+        }
+        if ($level === null || $level === '') {
+            $level = SchoolLevels::for($organisation)[0]['key'] ?? null;
+        }
+        if (SchoolLevels::resolve($organisation, (string) $level) === null) {
+            $known = collect(SchoolLevels::options($organisation))->pluck('label')->map(fn ($l) => SchoolLevels::shortLabel($l))->implode(', ');
+
+            return [[], ["Level \"{$level}\" isn't one of this school's levels ({$known})."]];
+        }
+
+        [$rows, $errors] = SchoolLevels::validate($organisation, [[
+            'level' => $level,
+            'year' => $year,
+            'class_left' => $cells['school_class_left'] ?? null,
+            'stream' => $cells['school_stream'] ?? null,
+        ]], false);
+
+        return [$rows, array_values($errors)];
     }
 
     private function summary(array $rows): array

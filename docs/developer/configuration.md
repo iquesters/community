@@ -19,7 +19,9 @@ ConfProvider::from(Module::COMMUNITY)->organisation_mode;
 | `directory_preset` | `alumni` | `alumni`, `club` or `association`. Used only when the seeder creates the directory form |
 | `match_keys` | `email,phone,batch+name` | How records are matched: comma-separated keys; `+` joins fields that must all be equal. A key naming a field the directory doesn't have is ignored |
 | `import_max_rows` | `5000` | Most rows in one bulk upload (1–50000) |
-| `self_registration` | `true` | Whether people can apply themselves (`/community/apply`) |
+| `self_registration` | `true` | Whether people can apply themselves (`/community/apply`, and the dashboard's Apply button) |
+| `directory_public_fields` | `batch,section` | Fields members see of each other in the directory, besides the name. Email and phone are never shown |
+| `member_role` | `member` | Role added on approval (the sign-up role stays). Empty: no role is given |
 | `proof_fields` | registration number (text) and a proof file (PDF/JPG/PNG, 5 MB), both optional | Proof asked for when applying. Each entry: `id`, `label`, `kind` (`identifier` or `file`), `required`, and for files `types` (e.g. `pdf,jpg`) and `max_kb` (up to 20480) |
 
 On a live install, add a changed key as one meta row; `community:seed` doesn't overwrite stored settings.

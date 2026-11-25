@@ -1,6 +1,6 @@
 @extends('userinterface::layouts.app')
 
-@section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make(['Apply for membership']))
+@section('page-title', \Iquesters\Foundation\Helpers\MetaHelper::make(['Membership']))
 @section('meta-description', \Iquesters\Foundation\Helpers\MetaHelper::description('Apply for membership'))
 
 @use('Iquesters\Community\Models\Membership')
@@ -9,134 +9,79 @@
     $status = $membership?->status;
     // The form shows for a first application, one on hold (send it again), or after a rejection (apply again).
     $showForm = $organisation && (! $membership || in_array($status, [Membership::STATUS_ON_HOLD, Membership::STATUS_REJECTED], true));
-    $prefill = $status === Membership::STATUS_REJECTED ? [] : ($values ?? []);
     $alert = [
-        Membership::STATUS_APPLIED => ['info', 'fa-hourglass-half', 'Your application is waiting for a decision.'],
-        Membership::STATUS_ON_HOLD => ['warning', 'fa-circle-question', 'An administrator needs more from you. Update your application below and send it again.'],
-        Membership::STATUS_APPROVED => ['success', 'fa-circle-check', "You're a ".strtolower($memberLabel).'.'],
-        Membership::STATUS_REJECTED => ['danger', 'fa-circle-xmark', 'Your application was not accepted. You can apply again with more details.'],
+        Membership::STATUS_APPLIED => ['info', 'fa-hourglass-half', 'Your application is waiting for a decision.', 'Application sent'],
+        Membership::STATUS_ON_HOLD => ['warning', 'fa-circle-question', 'An administrator needs more from you. Update your application below and send it again.', 'More details needed'],
+        Membership::STATUS_REJECTED => ['danger', 'fa-circle-xmark', 'Your application was not accepted. You can apply again with more details.', 'Not accepted'],
     ][$status] ?? null;
+    $sentFiles = $status === Membership::STATUS_ON_HOLD ? $membership->proofs->where('kind', 'file') : collect();
 @endphp
 
 @section('content')
-<div class="row justify-content-center">
-    <div class="col-12 col-lg-8 d-grid gap-3">
-        @if (session('error'))
-            <div class="alert alert-danger py-2 small mb-0">{{ session('error') }}</div>
-        @endif
-        @if (session('success'))
-            <div class="alert alert-success py-2 small mb-0">{{ session('success') }}</div>
-        @endif
+{{-- Full width, like every other page in the app layout. --}}
+<div class="d-grid gap-3">
 
         @if (! $organisation && $organisations->isNotEmpty())
             {{-- Multiple organisations: pick one first. --}}
-            <form method="GET" action="{{ route('community.apply.show') }}" class="card border-0 shadow-sm">
-                <div class="card-body d-flex gap-2 align-items-end">
-                    <div class="flex-grow-1">
-                        <label for="organisation" class="form-label small">Which organisation do you want to join?</label>
-                        <select id="organisation" name="organisation" class="form-select form-select-sm" required>
-                            <option value="">Choose…</option>
-                            @foreach ($organisations as $option)
-                                <option value="{{ $option->uid }}">{{ $option->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <button class="btn btn-sm btn-outline-primary">Continue</button>
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    {{-- Form schema community-organisation-choice. --}}
+                    @include('userinterface::components.form', ['id' => \Iquesters\Community\Support\CommunityForms::ORGANISATION_CHOICE])
                 </div>
-            </form>
+            </div>
         @elseif (! $organisation)
             <div class="alert alert-warning small mb-0">Applications aren't open yet. Please check back later.</div>
         @endif
 
+        {{-- Where the application is (not a flash message: it stays until the status changes). --}}
         @if ($alert)
-            <div class="alert alert-{{ $alert[0] }} small mb-0">
-                <i class="fas fa-fw {{ $alert[1] }}"></i> {{ $alert[2] }}
-                @if ($membership->decision_note && in_array($status, [Membership::STATUS_ON_HOLD, Membership::STATUS_REJECTED], true))
-                    <div class="mt-2"><span class="fw-semibold">Note from the administrator:</span> {{ $membership->decision_note }}</div>
-                @endif
+            <div class="card border-0 shadow-sm">
+                <div class="card-body d-flex gap-3 align-items-start">
+                    <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-{{ $alert[0] }}-subtle text-{{ $alert[0] }}-emphasis flex-shrink-0" style="width: 2.25rem; height: 2.25rem;">
+                        <i class="fas {{ $alert[1] }}" aria-hidden="true"></i>
+                    </span>
+                    <div class="small">
+                        <div class="fw-semibold">{{ $alert[3] }}</div>
+                        <div class="text-muted">{{ $alert[2] }}</div>
+                        @if ($membership->decision_note && in_array($status, [Membership::STATUS_ON_HOLD, Membership::STATUS_REJECTED], true))
+                            <div class="mt-2"><span class="fw-semibold">Note from the administrator:</span> {{ $membership->decision_note }}</div>
+                        @endif
+                        <div class="text-muted mt-1">Applied {{ $membership->created_at?->format('j M Y') }}</div>
+                    </div>
+                </div>
             </div>
         @endif
 
         @if ($showForm)
-            <form method="POST" action="{{ route('community.apply.store') }}" enctype="multipart/form-data" class="card border-0 shadow-sm">
-                @csrf
-                <input type="hidden" name="organisation_uid" value="{{ $organisation->uid }}">
-                <div class="card-body d-grid gap-3">
-                    <div>
-                        <h5 class="fs-6 mb-1">Apply to {{ $organisation->name }}</h5>
-                        <p class="text-muted small mb-0">Fill in your details as the school would have them, so we can find your record.</p>
-                    </div>
-
-                    <div class="row g-3">
-                        @foreach ($fields as $field)
-                            @php
-                                $name = "data[{$field['id']}]";
-                                $value = old("data.{$field['id']}", $prefill[$field['id']] ?? null);
-                                $inputType = in_array($field['type'], ['email', 'tel', 'number', 'date'], true) ? $field['type'] : 'text';
-                            @endphp
-                            <div class="col-12 col-md-6">
-                                <label for="f-{{ $field['id'] }}" class="form-label small">
-                                    {{ $field['label'] }} @if ($field['required'])<span class="text-danger">*</span>@endif
-                                </label>
-                                @if (in_array($field['type'], ['select', 'radio'], true) && $field['options'])
-                                    <select id="f-{{ $field['id'] }}" name="{{ $name }}" class="form-select form-select-sm @error($field['id']) is-invalid @enderror" @required($field['required'])>
-                                        <option value="">Choose…</option>
-                                        @foreach ($field['options'] as $option)
-                                            <option value="{{ $option }}" @selected((string) $value === (string) $option)>{{ $option }}</option>
-                                        @endforeach
-                                    </select>
-                                @elseif ($field['type'] === 'textarea')
-                                    <textarea id="f-{{ $field['id'] }}" name="{{ $name }}" rows="2" class="form-control form-control-sm @error($field['id']) is-invalid @enderror" @required($field['required'])>{{ $value }}</textarea>
-                                @else
-                                    <input id="f-{{ $field['id'] }}" type="{{ $inputType }}" name="{{ $name }}" value="{{ $value }}"
-                                           class="form-control form-control-sm @error($field['id']) is-invalid @enderror" @required($field['required'])>
-                                @endif
-                                @error($field['id'])<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="fs-6 mb-1">Apply to {{ $organisation->name }}</h5>
+                    <p class="text-muted small mb-3">Fill in your details as the school would have them, so we can find your record. Proof helps when the school's records don't have you.</p>
+                    <p class="small mb-3">
+                        <i class="fas fa-file-contract text-muted me-1" aria-hidden="true"></i>
+                        By applying you agree to
+                        @foreach (\Iquesters\Organisation\Support\OrganisationPolicies::links($organisation) as $link)
+                            <a href="{{ $link['url'] }}" target="_blank" rel="noopener">{{ $link['label'] }}</a>@if (! $loop->last) and @endif
                         @endforeach
-                    </div>
+                    </p>
 
-                    @if ($proofFields)
-                        <div>
-                            <h6 class="fs-6 mb-1">Proof</h6>
-                            <p class="text-muted small mb-2">Helps us confirm you, especially if the school's records don't have you. Only administrators see it.</p>
-                            <div class="row g-3">
-                                @foreach ($proofFields as $proof)
-                                    @php
-                                        $existing = $membership?->proofs?->where('field', $proof['id'])->last();
-                                    @endphp
-                                    <div class="col-12 col-md-6">
-                                        <label for="p-{{ $proof['id'] }}" class="form-label small">
-                                            {{ $proof['label'] }} @if ($proof['required'])<span class="text-danger">*</span>@endif
-                                        </label>
-                                        @if ($proof['kind'] === 'file')
-                                            <input id="p-{{ $proof['id'] }}" type="file" name="proof[{{ $proof['id'] }}]"
-                                                   accept="{{ collect($proof['types'])->map(fn ($t) => '.'.$t)->implode(',') }}"
-                                                   class="form-control form-control-sm @error('proof.'.$proof['id']) is-invalid @enderror"
-                                                   @required($proof['required'] && ! $existing)>
-                                            <div class="form-text">{{ strtoupper(implode(', ', $proof['types'])) }}, up to {{ round($proof['max_kb'] / 1024, 1) }} MB.
-                                                @if ($existing) Sent: <a href="{{ route('community.proofs.download', $existing->uid) }}">{{ $existing->original_name }}</a>@endif
-                                            </div>
-                                        @else
-                                            <input id="p-{{ $proof['id'] }}" type="text" name="proof[{{ $proof['id'] }}]" maxlength="255"
-                                                   value="{{ old('proof.'.$proof['id'], $existing?->value) }}"
-                                                   class="form-control form-control-sm @error('proof.'.$proof['id']) is-invalid @enderror" @required($proof['required'])>
-                                        @endif
-                                        @error('proof.'.$proof['id'])<div class="invalid-feedback">{{ $message }}</div>@enderror
-                                    </div>
-                                @endforeach
-                            </div>
-                        </div>
+                    {{-- Form schema "community-membership-application" (built by community:seed from the directory and proof settings). --}}
+                    @include('userinterface::components.form', [
+                        'id' => $formId,
+                        'formData' => json_encode($formData, JSON_UNESCAPED_UNICODE),
+                    ])
+
+                    @if ($sentFiles->isNotEmpty())
+                        <p class="small text-muted mt-3 mb-0">
+                            Already sent:
+                            @foreach ($sentFiles as $file)
+                                <a href="{{ route('community.proofs.download', $file->uid) }}">{{ $file->original_name }}</a>@if (! $loop->last), @endif
+                            @endforeach
+                            . Add another file only if you have more.
+                        </p>
                     @endif
-
-                    <div class="d-flex justify-content-end">
-                        <button type="submit" class="btn btn-sm btn-primary">
-                            {{ $status === Membership::STATUS_ON_HOLD ? 'Send again' : 'Apply' }}
-                        </button>
-                    </div>
                 </div>
-            </form>
+            </div>
         @endif
-    </div>
 </div>
 @endsection

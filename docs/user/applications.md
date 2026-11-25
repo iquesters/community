@@ -2,7 +2,7 @@
 
 ## For members
 
-1. Sign in and open **/community/apply**.
+1. Sign in and open **Community → Membership** (or **Apply for membership** on your dashboard).
 2. Fill in your details as the school would have them (name, batch, section…). Add proof if you have it: a registration number, or a photo or PDF of a certificate or old ID card. Only administrators see it.
 3. Press **Apply**. The page then shows where your application is:
    - **Waiting for a decision**;

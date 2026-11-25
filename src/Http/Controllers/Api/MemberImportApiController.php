@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
 use Iquesters\Community\Services\Import\MemberImportService;
+use Iquesters\Community\Support\CommunityAccess;
 use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\MemberMatcher;
 use Iquesters\Community\Support\OrganisationResolver;
@@ -33,9 +34,9 @@ class MemberImportApiController extends Controller
     }
 
     /** Options for the directory form's organisation select. */
-    public function organisations(): JsonResponse
+    public function organisations(Request $request): JsonResponse
     {
-        return ApiResponse::success(OrganisationResolver::options());
+        return ApiResponse::success(OrganisationResolver::options(CommunityAccess::manageableOrganisationIds($request->user())));
     }
 
     public function preview(Request $request): JsonResponse
@@ -46,7 +47,7 @@ class MemberImportApiController extends Controller
         ]);
 
         try {
-            $organisation = OrganisationResolver::resolve($request->input('organisation_uid'));
+            $organisation = OrganisationResolver::resolve($request->input('organisation_uid'), CommunityAccess::manageableOrganisationIds($request->user()));
             $preview = $this->imports->preview($request->file('file')->getRealPath(), $organisation, (int) $request->user()->id);
         } catch (\InvalidArgumentException $e) {
             return ApiResponse::error($e->getMessage(), 422);
@@ -60,6 +61,11 @@ class MemberImportApiController extends Controller
         $validated = $request->validate([
             'on_duplicate' => ['sometimes', Rule::in([MemberImportService::ON_DUPLICATE_SKIP, MemberImportService::ON_DUPLICATE_UPDATE])],
         ]);
+
+        $stored = $this->imports->stored($token, (int) $request->user()->id);
+        if ($stored && ! CommunityAccess::canManageOrganisation($request->user(), $stored['organisation']['id'] ?? null)) {
+            return ApiResponse::error("You don't manage this organisation.", 403);
+        }
 
         try {
             $result = $this->imports->import($token, (int) $request->user()->id, $validated['on_duplicate'] ?? MemberImportService::ON_DUPLICATE_SKIP);
