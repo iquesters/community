@@ -189,6 +189,51 @@ class MembershipService
         return $input + ['school_records' => $schoolRecords];
     }
 
+    /**
+     * Bug #26: someone uploaded from the school's records signs in with a matching
+     * verified email or phone: link the account to that record and approve the
+     * membership, without an application. Null when they already have one there.
+     */
+    public function approveMatched(Authenticatable $user, MemberRecord $record): ?Membership
+    {
+        $organisation = $record->organisation;
+        if (! $organisation || $this->current($user, $organisation)) {
+            return null;
+        }
+
+        $userId = (int) $user->getAuthIdentifier();
+        $membership = DB::transaction(function () use ($record, $organisation, $userId) {
+            $fresh = MemberRecord::query()->whereKey($record->id)->lockForUpdate()->first();
+            if (! $fresh || $fresh->user_id !== null) {
+                return null; // linked meanwhile: never taken over
+            }
+            $fresh->update(['user_id' => $userId, 'updated_by' => $userId]);
+
+            $membership = Membership::create([
+                'organisation_id' => $organisation->id,
+                'user_id' => $userId,
+                'member_record_id' => $fresh->id,
+                'status' => Membership::STATUS_APPROVED,
+                'application_data' => ['name' => $fresh->name, 'email' => $fresh->email, 'phone' => $fresh->phone],
+                'decided_at' => now(),
+                'decision_note' => "Matched the school's records",
+                'created_by' => $userId,
+                'updated_by' => $userId,
+            ]);
+            $this->history($membership, null, Membership::STATUS_APPROVED, "Matched the school's records", $userId);
+            $this->grantMemberRole($membership);
+            $this->joinOrganisation($membership);
+
+            return $membership;
+        });
+
+        if ($membership) {
+            static::logInfo('Membership approved from a matching record', ['membership' => $membership->uid, 'user_id' => $userId]);
+        }
+
+        return $membership;
+    }
+
     /** A member's proof from their details form (identifiers replaced, new files added). */
     public function saveProofs(Membership $membership, array $proofs): void
     {

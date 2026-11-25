@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (test round 3)
+- **Super-admins see the Directory** of any organisation (read-only: the one chosen with `?organisation=`, the header switcher's, else the first). They still have no Membership. `community:seed` gives them `view-member-directory`.
+- **Member records were empty for organisation admins** ("You do not have permission"): the table read foundation's generic entity API, which is super-admin only. It now reads `GET /community/members/data` (limited to the organisations managed, or the one worked in), and **Add member** / **Edit** save through `POST /community/members` and `PUT /community/members/{uid}`. New columns **At school** and **On the app**; search also matches a field value or a school year. Existing installs: `community:seed` sets the table's `data_url` and the directory form's endpoints (admins' columns and fields stay).
+
+### Added
+- **Members straight from the school's records:** when someone signs in (or verifies their email) with a **verified** email or phone matching exactly **one** record of an organisation that isn't linked to anyone, the account is linked to it and the membership is **approved** ("Matched the school's records"), with the member role. Several matches, a name match or an unverified email/phone: they apply as before. Setting `auto_approve_matches` (default on).
+
 ### Fixed (test round 2)
 - **School levels and Edit school records saved to a wrong address** (`PUT /community/school-levels`): the pages now give their forms the record's uid. Both open **read-only** with **Edit**.
 - **Members edit their own details:** Membership → **Edit my details** (the directory fields and what they completed at the school, with their school's levels; form `community-member-details-{organisation uid}`). Saved straight away and noted in the membership history. A member without school records (e.g. an org-admin made a member automatically) sees **Complete your details**.

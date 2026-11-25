@@ -2,7 +2,11 @@
 
 namespace Iquesters\Community;
 
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Verified;
+use Illuminate\Support\Facades\Event;
 use Iquesters\Community\Dashboard\MembershipCard;
+use Iquesters\Community\Support\AutoMembership;
 use Iquesters\Foundation\System\Providers\BaseServiceProvider;
 
 class CommunityServiceProvider extends BaseServiceProvider
@@ -18,5 +22,15 @@ class CommunityServiceProvider extends BaseServiceProvider
         // shows every service tagged "dashboard-cards").
         $this->app->singleton(MembershipCard::class);
         $this->app->tag([MembershipCard::class], 'dashboard-cards');
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        // People uploaded from a school's records become members when they sign in
+        // with a matching verified email or phone, or verify it (AutoMembership).
+        Event::listen(Login::class, fn (Login $event) => AutoMembership::check($event->user));
+        Event::listen(Verified::class, fn (Verified $event) => AutoMembership::check($event->user));
     }
 }

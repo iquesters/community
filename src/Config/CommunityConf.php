@@ -46,6 +46,13 @@ class CommunityConf extends BaseConf
     /** Whether people can apply for membership themselves (Apply page). */
     protected bool $self_registration;
 
+    /**
+     * Someone signing in with a VERIFIED email or phone that matches exactly one
+     * record of an organisation (e.g. from the school's lists) becomes a member
+     * straight away, without applying.
+     */
+    protected bool $auto_approve_matches;
+
     /** Directory fields members see of each other, besides the name (comma-separated ids). Contact details stay private. */
     protected string $directory_public_fields;
 
@@ -77,6 +84,7 @@ class CommunityConf extends BaseConf
         $default_values->match_keys = 'email,phone,school+name';
         $default_values->import_max_rows = 5000;
         $default_values->self_registration = true;
+        $default_values->auto_approve_matches = true;
         $default_values->member_role = 'member';
         // Besides the name and the school years (ICSE 2003 · ISC 2005), which members always see.
         $default_values->directory_public_fields = 'section';
@@ -103,6 +111,7 @@ class CommunityConf extends BaseConf
             'match_keys' => 'string|max:255',
             'import_max_rows' => 'integer|min:1|max:50000',
             'self_registration' => 'boolean',
+            'auto_approve_matches' => 'boolean',
             'member_role' => 'nullable|string|max:125',
             'directory_public_fields' => 'nullable|string|max:255',
             'proof_fields' => 'array|max:10',

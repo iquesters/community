@@ -186,13 +186,20 @@ class CommunityAccessTest extends TestCase
         $this->assertTrue(Membership::where('user_id', $admin->id)->where('status', 'approved')->exists());
     }
 
-    public function test_super_admin_has_no_member_items(): void
+    public function test_super_admin_has_no_membership_but_sees_every_directory(): void
     {
         $this->seed(CommunitySeeder::class);
-
+        $organisation = \Iquesters\Organisation\Models\Organisation::firstOrFail();
+        $service = app(MembershipService::class);
         $super = $this->makeUser('super-admin');
+        $service->approve($service->apply($this->makeUser('user'), $organisation, ['name' => 'Ann Roy', 'school_records' => [['level' => 'icse', 'year' => 1962]]]), $super->id);
+
         $this->assertFalse($super->can(CommunitySeeder::USE_PERMISSION));
-        $this->assertFalse($super->can(CommunitySeeder::DIRECTORY_PERMISSION));
+        $this->assertTrue($super->can(CommunitySeeder::DIRECTORY_PERMISSION));
         $this->assertTrue($super->can(CommunitySeeder::MANAGE_PERMISSION));
+
+        // Read-only, any organisation (the first, or ?organisation=).
+        $this->actingAs($super)->getJson('/community/directory/data')->assertOk()->assertJsonPath('response_schema.data.0.name', 'Ann Roy');
+        $this->getJson('/community/directory/data?organisation='.$organisation->uid)->assertOk()->assertJsonCount(1, 'response_schema.data');
     }
 }
