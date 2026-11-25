@@ -231,6 +231,15 @@ class ApplicationController extends Controller
     /** The organisation the user is an approved member of (the one asked for, worked in, or any). */
     private function memberOrganisation(Request $request): ?Organisation
     {
+        // Super-admins see any organisation's directory (read-only): the one chosen,
+        // the one in the header switcher, else the first.
+        if (CommunityAccess::isPlatformAdmin($request->user())) {
+            $uid = $request->query('organisation') ?: OrganisationResolver::context()?->uid;
+            $query = Organisation::query()->where('status', 'active');
+
+            return ($uid ? (clone $query)->where('uid', $uid)->first() : null) ?? $query->orderBy('name')->first();
+        }
+
         $organisation = $this->organisation($request->query('organisation'))
             ?? $this->organisation(OrganisationResolver::context()?->uid)
             ?? CommunityAccess::approvedMembership($request->user())?->organisation;

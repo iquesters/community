@@ -6,6 +6,7 @@ use Iquesters\Community\Http\Controllers\ApplicationController;
 use Iquesters\Community\Http\Controllers\ApplicationProofController;
 use Iquesters\Community\Http\Controllers\MemberDetailsController;
 use Iquesters\Community\Http\Controllers\MemberImportController;
+use Iquesters\Community\Http\Controllers\MemberRecordController;
 use Iquesters\Community\Http\Controllers\SchoolRecordController;
 
 $ulid = '[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}';
@@ -44,6 +45,12 @@ Route::middleware('web')->group(function () use ($ulid) {
             Route::post('/preview', [MemberImportController::class, 'preview'])->name('preview');
             Route::post('/{token}', [MemberImportController::class, 'store'])->where('token', $ulid)->name('store');
         });
+
+        // Member records (the admins' register), limited to the organisations managed.
+        Route::get('/members/data', [MemberRecordController::class, 'data'])->name('community.members.data');
+        Route::get('/members/data/{uid}', [MemberRecordController::class, 'record'])->where('uid', $ulid)->name('community.members.record');
+        Route::post('/members', [MemberRecordController::class, 'store'])->name('community.members.store');
+        Route::put('/members/{uid}', [MemberRecordController::class, 'update'])->where('uid', $ulid)->name('community.members.update');
 
         // A member's school records (Members table record section and its edit page).
         Route::prefix('members/{uid}')->where(['uid' => $ulid])->name('community.members.school.')->group(function () {
