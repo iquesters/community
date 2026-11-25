@@ -58,6 +58,8 @@ class CommunitySeeder extends BaseSeeder
                     'description' => self::MEMBER_TABLE_DESCRIPTION,
                     'schema' => [
                         'entity' => 'member_records',
+                        // Rows from community (limited to the organisations managed): the generic entity API is super-admin only.
+                        'data_url' => '/community/members/data',
                         'create' => ['form' => 'community-member-record', 'label' => 'Add member'],
                         // The record: its details, and what they completed at the school.
                         'record' => self::MEMBER_RECORD_SECTIONS,
@@ -72,6 +74,8 @@ class CommunitySeeder extends BaseSeeder
                                 ],
                                 ['data' => 'email', 'title' => 'Email', 'visible' => true],
                                 ['data' => 'phone', 'title' => 'Phone', 'visible' => true],
+                                ['data' => 'school', 'title' => 'At school', 'visible' => true],
+                                ['data' => 'has_login', 'title' => 'On the app', 'visible' => true],
                                 ['data' => 'source', 'title' => 'Source', 'visible' => true],
                                 ['data' => 'created_at', 'title' => 'Added', 'visible' => true],
                             ],
@@ -224,15 +228,26 @@ class CommunitySeeder extends BaseSeeder
         $this->relaxDefaultedColumns();
     }
 
-    /** Existing installs: the Members table gets its record sections (admins' columns stay). */
+    /** Existing installs: the Members table gets its record sections and data source, the directory form its endpoints (admins' columns and fields stay). */
     private function syncMemberTableSections(): void
     {
+        $form = DB::table('form_schemas')->where('slug', 'community-member-record')->first(['id', 'schema']);
+        $formSchema = $form ? json_decode((string) $form->schema, true) : null;
+        if (is_array($formSchema)) {
+            $formSchema['modes'] = DirectoryPresets::MODES;
+            DB::table('form_schemas')->where('id', $form->id)->update([
+                'schema' => json_encode($formSchema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'updated_at' => now(),
+            ]);
+        }
+
         $row = DB::table('table_schemas')->where('slug', 'community-member-table')->first(['id', 'schema']);
         $schema = $row ? json_decode((string) $row->schema, true) : null;
         if (! is_array($schema)) {
             return;
         }
         $schema['record'] = self::MEMBER_RECORD_SECTIONS;
+        $schema['data_url'] = '/community/members/data';
         DB::table('table_schemas')->where('id', $row->id)->update([
             'description' => self::MEMBER_TABLE_DESCRIPTION,
             'schema' => json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
@@ -254,7 +269,9 @@ class CommunitySeeder extends BaseSeeder
         $roles['user']->givePermissionTo(self::USE_PERMISSION);
         $roles['member']->givePermissionTo([self::USE_PERMISSION, self::DIRECTORY_PERMISSION]);
         // Super-admin gets every module permission (BaseSeeder); it manages, it isn't a member.
-        $roles['super-admin']->revokePermissionTo([self::USE_PERMISSION, self::DIRECTORY_PERMISSION]);
+        // Super-admin isn't a member (no Membership), but sees every organisation's Directory.
+        $roles['super-admin']->revokePermissionTo(self::USE_PERMISSION);
+        $roles['super-admin']->givePermissionTo(self::DIRECTORY_PERMISSION);
 
         $module = Module::where('name', $this->moduleName)->first();
         if ($module) {

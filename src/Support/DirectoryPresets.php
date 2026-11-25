@@ -15,6 +15,13 @@ class DirectoryPresets
 
     public const ORGANISATIONS_URL = '/api/community/v1/organisations';
 
+    /** Where the directory form saves (community's member record endpoints). */
+    public const MODES = [
+        'create' => ['endpoint' => '/community/members', 'method' => 'POST'],
+        'edit' => ['endpoint' => '/community/members/{uid}', 'method' => 'PUT', 'allowDelete' => false],
+        'view' => ['allowDelete' => false],
+    ];
+
     public static function coreFields(): array
     {
         return [
@@ -69,6 +76,8 @@ class DirectoryPresets
     {
         return [
             'entity' => 'member_records',
+            // Saved through community (limited to the organisations managed), not the generic entity API.
+            'modes' => self::MODES,
             'defaultFieldSize' => 'auto',
             'submitButtonLabel' => 'Save',
             'fields' => [self::organisationField(), ...self::fields($preset)],
