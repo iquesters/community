@@ -8,7 +8,8 @@
 @php
     $status = $membership?->status;
     // The form shows for a first application, one on hold (send it again), or after a rejection (apply again).
-    $showForm = $organisation && (! $membership || in_array($status, [Membership::STATUS_ON_HOLD, Membership::STATUS_REJECTED], true));
+    // Not while their membership is in an order being paid (e.g. with an event registration).
+    $showForm = $organisation && empty($inOrder) && (! $membership || in_array($status, [Membership::STATUS_ON_HOLD, Membership::STATUS_REJECTED], true));
     $alert = [
         Membership::STATUS_APPLIED => ['info', 'fa-hourglass-half', 'Your application is waiting for a decision.', 'Application sent'],
         Membership::STATUS_ON_HOLD => ['warning', 'fa-circle-question', 'An administrator needs more from you. Update your application below and send it again.', 'More details needed'],
@@ -20,17 +21,37 @@
 @section('content')
 {{-- Full width, like every other page in the app layout. --}}
 <div class="d-grid gap-3">
+        {{-- Applied (waiting): they may pay the membership meanwhile; an admin still decides the application. --}}
+        @if ($organisation && $membership && $membership->isOpen())
+            @include('community::membership.pay-card', ['organisation' => $organisation])
+        @endif
 
         @if (! $organisation && $organisations->isNotEmpty())
             {{-- Multiple organisations: pick one first. --}}
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     {{-- Form schema community-organisation-choice. --}}
-                    @include('userinterface::components.form', ['id' => \Iquesters\Community\Support\CommunityForms::ORGANISATION_CHOICE])
+                    {{-- Its own (empty) data: an @include inherits this page's $formData (the
+                         application's values, an array), which crashed the page in multiple mode. --}}
+                    @include('userinterface::components.form', [
+                        'id' => \Iquesters\Community\Support\CommunityForms::ORGANISATION_CHOICE,
+                        'formData' => '',
+                        'entity_uid' => null,
+                        'form_mode' => null,
+                    ])
                 </div>
             </div>
         @elseif (! $organisation)
             <div class="alert alert-warning small mb-0">Applications aren't open yet. Please check back later.</div>
+        @endif
+
+        @if (! empty($inOrder))
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="fs-6 mb-1">No need to apply</h6>
+                    @include('community::membership.in-order', ['inOrder' => $inOrder, 'bordered' => false, 'return' => '/community/membership?organisation='.$organisation->uid])
+                </div>
+            </div>
         @endif
 
         {{-- Where the application is (not a flash message: it stays until the status changes). --}}

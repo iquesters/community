@@ -5,6 +5,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (event registration)
+- **The membership details carry a line in words** (`member_details.summary`, e.g. *ISC 2005*, *Left after Class 8, 2001*), so the payment and registration pages can show them without knowing them.
+- **A membership being paid shows instead of "Apply"**: when someone's membership is in an order that isn't paid yet (e.g. they registered for an event with it, or are a guest whose email is on it), the dashboard card and the Membership page say *Membership 2027 is in your order ORD-0001: waiting for your payment* (or *being checked*, *not accepted*) with *Pay now* / *See payment*, and offer no application meanwhile (in multiple-organisation mode too). Once paid, the membership itself shows. `MembershipPurchase::inOpenOrder()`.
+- **The membership donation follows the donation product's limits** (its minimum, else ₹1; its maximum): checked on the server, and the card says *A donation is optional: ₹50 or more*.
+- **Plainer labels for a member's details**: *Studied up to* (was *Completed at {organisation}*), *Year of passing* (was *Year*), *Left after class* (was *Class left after*).
+
+### Added (a donation with the membership)
+- **Paying the membership on its own** offers an optional donation (form `community-membership-pay-donation`) when the organisation's donation is set to *Offer with every paid order*; it's added to the same order.
+
+### Added (event registration)
+- **What an event asks of a member** (`EventMembershipDetails`, bound when the event module is installed): the member label (conf `member_label`, e.g. Alumnus), what they completed at the school (the organisation's levels or *Left before finishing* with the class) and the year, checked like an application and prefilled from the member's record. Given with a paid membership, it reaches their member record. Test: `OrderMembershipsTest`.
+
+### Added (the organisation they came through)
+- **The membership page has the organisation chosen** when the person came through its public page or one of its public events (e.g. signed up from an event link): no "which organisation?" step. Test: `MultipleOrganisationsTest`.
+
+### Added (paid memberships; with iquesters/commerce 2.x and iquesters/payment)
+- **Membership periods** (`membership_periods`): when a commerce order is paid (`OrderPaid`), each membership line becomes a period (e.g. 1 Jan – 31 Dec 2027) with its order reference and amount.
+  - **The person has an account** (the line's user, else an account with that *verified* email): their membership. With approval **together** (the event's setting) an open or new application is approved on payment, linking the school's record when exactly one unlinked record has their email ; off, it waits in Applications. A member stays a member.
+  - **No account** (e.g. an alumnus guest at the meet): the school's record with that email or phone, else a new record (source `event_registration`). When they sign up and verify that email they become a member automatically (as for uploaded records) and the period is theirs.
+  - Errors are logged and never block a payment.
+  - Setting **`approve_paid_memberships`** (default on): paying approves the application; off: it waits in Applications. An order line may say otherwise (meta `approval`), e.g. buying the membership alone always waits for an admin.
+- **Pay the membership on its own** (Membership page): the organisation's membership product on sale now (made by a paid event, or in commerce) → an order (`MEM-0001`) → the pay page. Shown to members (renewal) and applicants; paying doesn't decide an application. Form schema `community-membership-pay`.
+- **Gender** (Male / Female / Other) in the directory: in the presets, and added once to an existing directory form by `community:seed` (after phone; admins may move or remove it). Paid registrations fill it in.
+- commerce is optional (`suggest`); without it nothing of this shows.
+
+### Fixed (staging)
+- **Membership page crashed (500) in multiple-organisation mode** before a school was chosen: the organisation choice form inherited the page's `$formData` (an array) through `@include`. It now gets its own empty data. Test: `MultipleOrganisationsTest`.
+
 ### Fixed (test round 3)
 - **Super-admins see the Directory** of any organisation (read-only: the one chosen with `?organisation=`, the header switcher's, else the first). They still have no Membership. `community:seed` gives them `view-member-directory`.
 - **Member records were empty for organisation admins** ("You do not have permission"): the table read foundation's generic entity API, which is super-admin only. It now reads `GET /community/members/data` (limited to the organisations managed, or the one worked in), and **Add member** / **Edit** save through `POST /community/members` and `PUT /community/members/{uid}`. New columns **At school** and **On the app**; search also matches a field value or a school year. Existing installs: `community:seed` sets the table's `data_url` and the directory form's endpoints (admins' columns and fields stay).

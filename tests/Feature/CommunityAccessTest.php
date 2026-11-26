@@ -189,7 +189,7 @@ class CommunityAccessTest extends TestCase
     public function test_super_admin_has_no_membership_but_sees_every_directory(): void
     {
         $this->seed(CommunitySeeder::class);
-        $organisation = \Iquesters\Organisation\Models\Organisation::firstOrFail();
+        $organisation = Organisation::firstOrFail();
         $service = app(MembershipService::class);
         $super = $this->makeUser('super-admin');
         $service->approve($service->apply($this->makeUser('user'), $organisation, ['name' => 'Ann Roy', 'school_records' => [['level' => 'icse', 'year' => 1962]]]), $super->id);

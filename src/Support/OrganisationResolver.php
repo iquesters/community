@@ -77,6 +77,14 @@ class OrganisationResolver
         return class_exists($class) && app()->bound($class) ? app($class)->current() : null;
     }
 
+    /** The organisation the person came through (its public page or a public event), if any. */
+    public static function cameFrom(): ?Organisation
+    {
+        $class = 'Iquesters\\Organisation\\Support\\OrganisationContext';
+
+        return class_exists($class) && method_exists($class, 'cameFrom') ? app($class)->cameFrom() : null;
+    }
+
     /** Single mode: the configured organisation, else the first active one. */
     public static function default(): ?Organisation
     {

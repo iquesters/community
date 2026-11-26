@@ -28,6 +28,9 @@ class MemberRecord extends Model
     /** An organisation admin, made a member automatically (AdminMemberships). */
     public const SOURCE_ADMIN = 'admin';
 
+    /** An alumnus guest of a paid event registration, without an account yet (linked when they sign in). */
+    public const SOURCE_EVENT = 'event_registration';
+
     protected $table = 'member_records';
 
     protected $fillable = [

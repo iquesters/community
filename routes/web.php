@@ -7,6 +7,7 @@ use Iquesters\Community\Http\Controllers\ApplicationProofController;
 use Iquesters\Community\Http\Controllers\MemberDetailsController;
 use Iquesters\Community\Http\Controllers\MemberImportController;
 use Iquesters\Community\Http\Controllers\MemberRecordController;
+use Iquesters\Community\Http\Controllers\MembershipPaymentController;
 use Iquesters\Community\Http\Controllers\SchoolRecordController;
 
 $ulid = '[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}';
@@ -24,6 +25,8 @@ Route::middleware('web')->group(function () use ($ulid) {
         Route::post('/membership/organisation', [ApplicationController::class, 'chooseOrganisation'])->name('community.membership.organisation');
         // The application form (form schema) posts here.
         Route::post('/membership', [ApplicationController::class, 'store'])->name('community.membership.apply');
+        // Pay the membership on its own (commerce + payment): an order, then the pay page.
+        Route::post('/membership/{uid}/pay', [MembershipPaymentController::class, 'store'])->where('uid', '[A-Za-z0-9-]+')->name('community.membership.pay');
         // A member edits their own details (their approved membership; checked in the controller).
         Route::get('/membership/details/{uid}', [MemberDetailsController::class, 'edit'])->where('uid', $ulid)->name('community.membership.details');
         Route::put('/membership/details/{uid}', [MemberDetailsController::class, 'update'])->where('uid', $ulid)->name('community.membership.details.update');

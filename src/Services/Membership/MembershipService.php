@@ -6,12 +6,14 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Iquesters\Community\Models\ApplicationProof;
 use Iquesters\Community\Models\MemberRecord;
 use Iquesters\Community\Models\Membership;
+use Iquesters\Community\Models\MembershipPeriod;
 use Iquesters\Community\Models\MembershipStatusHistory;
 use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\MemberMatcher;
@@ -132,6 +134,7 @@ class MembershipService
             $this->decide($membership, Membership::STATUS_APPROVED, $note, $adminId);
             $this->grantMemberRole($membership);
             $this->joinOrganisation($membership);
+            $this->linkPeriods($membership->fresh());
         });
 
         static::logInfo('Membership approved', ['membership' => $membership->uid, 'admin_id' => $adminId, 'linked' => (bool) $linkRecordUid]);
@@ -223,6 +226,8 @@ class MembershipService
             $this->history($membership, null, Membership::STATUS_APPROVED, "Matched the school's records", $userId);
             $this->grantMemberRole($membership);
             $this->joinOrganisation($membership);
+            // Periods paid for this record before they had an account (e.g. an alumnus guest at the meet).
+            $this->linkPeriods($membership);
 
             return $membership;
         });
@@ -232,6 +237,84 @@ class MembershipService
         }
 
         return $membership;
+    }
+
+    /**
+     * A paid membership (a commerce order's membership line): the person's open
+     * application, else a new one from what they entered; approved when
+     * $approve (the event's "together" setting), linking the school's record of
+     * them when exactly one unlinked record has their email. Already a member:
+     * that membership, unchanged.
+     *
+     * @param  array{name?: ?string, email?: ?string, phone?: ?string, gender?: ?string}  $person
+     */
+    public function fromPayment(Authenticatable $user, Organisation $organisation, array $person, bool $approve, int $adminId, string $note): Membership
+    {
+        $current = $this->current($user, $organisation);
+        if ($current && $current->status === Membership::STATUS_APPROVED) {
+            return $current;
+        }
+        $userId = (int) $user->getAuthIdentifier();
+
+        return DB::transaction(function () use ($current, $organisation, $person, $approve, $adminId, $note, $userId, $user) {
+            $membership = $current && $current->isOpen() ? $current : null;
+            if (! $membership) {
+                $membership = Membership::create([
+                    'organisation_id' => $organisation->id,
+                    'user_id' => $userId,
+                    'status' => Membership::STATUS_APPLIED,
+                    'application_data' => array_filter([
+                        'name' => $person['name'] ?? $user->name ?? null,
+                        'email' => MemberValue::email($person['email'] ?? $user->email ?? null),
+                        'phone' => MemberValue::phone($person['phone'] ?? null),
+                        'gender' => $person['gender'] ?? null,
+                    ], fn ($v) => $v !== null && $v !== '') + (array) ($person['details'] ?? []),
+                    'created_by' => $userId,
+                    'updated_by' => $userId,
+                ]);
+                $this->history($membership, null, Membership::STATUS_APPLIED, $note, $userId);
+            }
+            if (! $approve) {
+                return $membership->fresh();
+            }
+
+            $record = $this->recordFor($organisation, $userId, (string) ($membership->application_data['email'] ?? ''));
+            $membership = $this->approve($membership, $adminId, $record?->uid, $note);
+            $gender = $person['gender'] ?? null;
+            if ($gender && $membership->memberRecord && ! $membership->memberRecord->getMetaValue('gender')) {
+                $membership->memberRecord->setMetaValue('gender', $gender, $adminId);
+            }
+
+            return $membership;
+        });
+    }
+
+    /** The school's record to link: the user's own, else the one unlinked record with their email. */
+    private function recordFor(Organisation $organisation, int $userId, string $email): ?MemberRecord
+    {
+        $base = fn () => MemberRecord::query()->where('organisation_id', $organisation->id)->where('status', '!=', 'deleted');
+        if ($own = $base()->where('user_id', $userId)->first()) {
+            return $own;
+        }
+        $email = MemberValue::email($email);
+        if (! $email) {
+            return null;
+        }
+        $matches = $base()->whereNull('user_id')->whereRaw('LOWER(email) = ?', [$email])->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /** Periods paid for the member's record (before the membership existed) now belong to it. */
+    private function linkPeriods(Membership $membership): void
+    {
+        if (! $membership->member_record_id || ! Schema::hasTable('membership_periods')) {
+            return;
+        }
+        MembershipPeriod::query()
+            ->where('member_record_id', $membership->member_record_id)
+            ->whereNull('membership_id')
+            ->update(['membership_id' => $membership->id, 'user_id' => $membership->user_id]);
     }
 
     /** A member's proof from their details form (identifiers replaced, new files added). */
