@@ -11,6 +11,9 @@
 @section('content')
 {{-- Full width, like every other page in the app layout. --}}
 <div class="d-grid gap-3">
+        @if (session('success'))<div class="alert alert-success small mb-0">{{ session('success') }}</div>@endif
+        @include('community::membership.pay-card', ['organisation' => $organisation])
+
         {{-- The membership --}}
         <div class="card border-0 shadow-sm">
             <div class="card-body d-flex flex-wrap gap-3 align-items-center">

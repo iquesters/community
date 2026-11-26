@@ -31,6 +31,16 @@ class DirectoryPresets
         ];
     }
 
+    /** Gender (a meta field): also asked for everyone in a paid event registration. */
+    public static function genderField(): array
+    {
+        return ['id' => 'gender', 'label' => 'Gender', 'type' => 'select', 'meta' => true, 'options' => [
+            ['value' => 'male', 'label' => 'Male'],
+            ['value' => 'female', 'label' => 'Female'],
+            ['value' => 'other', 'label' => 'Other'],
+        ]];
+    }
+
     public static function fields(string $preset): array
     {
         $extra = match ($preset) {
@@ -51,7 +61,7 @@ class DirectoryPresets
             ],
         };
 
-        return [...self::coreFields(), ...$extra];
+        return [...self::coreFields(), self::genderField(), ...$extra];
     }
 
     /**

@@ -7,6 +7,7 @@ use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\Event;
 use Iquesters\Community\Dashboard\MembershipCard;
 use Iquesters\Community\Support\AutoMembership;
+use Iquesters\Community\Support\OrderMemberships;
 use Iquesters\Foundation\System\Providers\BaseServiceProvider;
 
 class CommunityServiceProvider extends BaseServiceProvider
@@ -32,5 +33,11 @@ class CommunityServiceProvider extends BaseServiceProvider
         // with a matching verified email or phone, or verify it (AutoMembership).
         Event::listen(Login::class, fn (Login $event) => AutoMembership::check($event->user));
         Event::listen(Verified::class, fn (Verified $event) => AutoMembership::check($event->user));
+
+        // A paid order's membership lines (commerce): the membership periods, and the memberships of those who paid.
+        $orderPaid = 'Iquesters\\Commerce\\Events\\OrderPaid';
+        if (class_exists($orderPaid)) {
+            Event::listen($orderPaid, fn ($event) => OrderMemberships::handle($event->order));
+        }
     }
 }

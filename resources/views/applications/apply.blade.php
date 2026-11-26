@@ -20,13 +20,24 @@
 @section('content')
 {{-- Full width, like every other page in the app layout. --}}
 <div class="d-grid gap-3">
+        {{-- Applied (waiting): they may pay the membership meanwhile; an admin still decides the application. --}}
+        @if ($organisation && $membership && $membership->isOpen())
+            @include('community::membership.pay-card', ['organisation' => $organisation])
+        @endif
 
         @if (! $organisation && $organisations->isNotEmpty())
             {{-- Multiple organisations: pick one first. --}}
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     {{-- Form schema community-organisation-choice. --}}
-                    @include('userinterface::components.form', ['id' => \Iquesters\Community\Support\CommunityForms::ORGANISATION_CHOICE])
+                    {{-- Its own (empty) data: an @include inherits this page's $formData (the
+                         application's values, an array), which crashed the page in multiple mode. --}}
+                    @include('userinterface::components.form', [
+                        'id' => \Iquesters\Community\Support\CommunityForms::ORGANISATION_CHOICE,
+                        'formData' => '',
+                        'entity_uid' => null,
+                        'form_mode' => null,
+                    ])
                 </div>
             </div>
         @elseif (! $organisation)

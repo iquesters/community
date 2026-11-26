@@ -216,6 +216,7 @@ class CommunitySeeder extends BaseSeeder
         $this->seedAccess();
         $this->seedDefaultOrganisation();
         $this->seedDirectoryForm();
+        $this->addGenderField();
 
         // The entity API saves the directory's meta fields (batch, section…) only when listed on the entity.
         DirectoryFields::syncEntity();
@@ -226,6 +227,27 @@ class CommunitySeeder extends BaseSeeder
         $this->syncMemberTableSections();
         DecisionForm::sync();
         $this->relaxDefaultedColumns();
+    }
+
+    /** Existing installs: the directory form gets the gender field once (admins may move or remove it after). */
+    private function addGenderField(): void
+    {
+        $form = DB::table('form_schemas')->where('slug', DirectoryFields::formSlug())->first(['id', 'schema']);
+        $schema = $form ? json_decode((string) $form->schema, true) : null;
+        if (! is_array($schema) || ! is_array($schema['fields'] ?? null) || ($schema['_gender_added'] ?? false)) {
+            return;
+        }
+        $ids = array_column($schema['fields'], 'id');
+        if (! in_array('gender', $ids, true)) {
+            $at = array_search('phone', $ids, true);
+            $at = $at === false ? count($schema['fields']) : $at + 1;
+            array_splice($schema['fields'], $at, 0, [DirectoryPresets::genderField()]);
+        }
+        $schema['_gender_added'] = true;
+        DB::table('form_schemas')->where('id', $form->id)->update([
+            'schema' => json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'updated_at' => now(),
+        ]);
     }
 
     /** Existing installs: the Members table gets its record sections and data source, the directory form its endpoints (admins' columns and fields stay). */

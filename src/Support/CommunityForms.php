@@ -19,11 +19,22 @@ class CommunityForms
 
     public const ORGANISATION_CHOICE = 'community-organisation-choice';
 
+    public const MEMBERSHIP_PAY = 'community-membership-pay';
+
     public static function syncAll(): void
     {
         self::upsert(self::IMPORT, 'Bulk upload of members', self::import());
         self::upsert(self::IMPORT_CONFIRM, 'Confirm bulk upload', self::importConfirm());
         self::upsert(self::ORGANISATION_CHOICE, 'Choose an organisation', self::organisationChoice());
+        self::upsert(self::MEMBERSHIP_PAY, 'Pay membership', [
+            'endpoint' => '/community/membership/{uid}/pay',
+            'method' => 'POST',
+            'submitButtonLabel' => 'Pay membership',
+            'allowCancel' => false,
+            'modes' => ['edit' => ['allowCancel' => false, 'allowDelete' => false]],
+            'disableSnackbar' => true,
+            'fields' => [],
+        ]);
     }
 
     public static function import(): array
