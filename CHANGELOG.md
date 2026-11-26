@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Requires `iquesters/organisation` ^2.2**: the Membership page uses `OrganisationContext::cameFrom()` (new in organisation 2.2); with ^2.0 an older organisation could be installed and the page would fail.
+
+## [1.1.0] – 2026-11-27
+
+_Also covers 1.0.0 and 1.0.1, which were tagged without their own heading._
+
 ### Changed (event registration)
 - **The membership details carry a line in words** (`member_details.summary`, e.g. *ISC 2005*, *Left after Class 8, 2001*), so the payment and registration pages can show them without knowing them.
 - **A membership being paid shows instead of "Apply"**: when someone's membership is in an order that isn't paid yet (e.g. they registered for an event with it, or are a guest whose email is on it), the dashboard card and the Membership page say *Membership 2027 is in your order ORD-0001: waiting for your payment* (or *being checked*, *not accepted*) with *Pay now* / *See payment*, and offer no application meanwhile (in multiple-organisation mode too). Once paid, the membership itself shows. `MembershipPurchase::inOpenOrder()`.
