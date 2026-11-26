@@ -23,6 +23,11 @@ class CommunityServiceProvider extends BaseServiceProvider
         // shows every service tagged "dashboard-cards").
         $this->app->singleton(MembershipCard::class);
         $this->app->tag([MembershipCard::class], 'dashboard-cards');
+
+        // With the event module: what a member is called and what they're asked when registering (school records).
+        if (interface_exists('Iquesters\Event\Contracts\MembershipDetails')) {
+            $this->app->bind('Iquesters\Event\Contracts\MembershipDetails', \Iquesters\Community\Support\EventMembershipDetails::class);
+        }
     }
 
     public function boot(): void

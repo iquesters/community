@@ -13,6 +13,10 @@
     <div class="card-body">
         <h5 class="fs-6 text-muted mb-3"><i class="fas fa-people-group me-2"></i>Membership</h5>
 
+        @if ($inOrder)
+            @include('community::membership.in-order', ['inOrder' => $inOrder, 'showOrganisation' => $multiple, 'return' => '/dashboard'])
+        @endif
+
         @foreach ($memberships as $membership)
             @php([$color, $icon, $text, $action] = $states[$membership->status] ?? ['secondary', 'fa-circle', $membership->statusLabel(), null])
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 border-bottom py-2 small">

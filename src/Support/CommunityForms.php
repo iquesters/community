@@ -21,11 +21,26 @@ class CommunityForms
 
     public const MEMBERSHIP_PAY = 'community-membership-pay';
 
+    /** The same, with an optional donation (the organisation offers it with every paid order). */
+    public const MEMBERSHIP_PAY_DONATION = 'community-membership-pay-donation';
+
     public static function syncAll(): void
     {
         self::upsert(self::IMPORT, 'Bulk upload of members', self::import());
         self::upsert(self::IMPORT_CONFIRM, 'Confirm bulk upload', self::importConfirm());
         self::upsert(self::ORGANISATION_CHOICE, 'Choose an organisation', self::organisationChoice());
+        self::upsert(self::MEMBERSHIP_PAY_DONATION, 'Pay membership (with a donation)', [
+            'endpoint' => '/community/membership/{uid}/pay',
+            'method' => 'POST',
+            'submitButtonLabel' => 'Pay membership',
+            'allowCancel' => false,
+            'modes' => ['edit' => ['allowCancel' => false, 'allowDelete' => false]],
+            'disableSnackbar' => true,
+            'defaultFieldSize' => 12,
+            'fields' => [
+                ['id' => 'donation', 'label' => 'Add a donation, ₹ (optional)', 'type' => 'number', 'min' => 1, 'step' => '1', 'placeholder' => 'No donation', 'helperText' => 'Leave empty for none.'],
+            ],
+        ]);
         self::upsert(self::MEMBERSHIP_PAY, 'Pay membership', [
             'endpoint' => '/community/membership/{uid}/pay',
             'method' => 'POST',

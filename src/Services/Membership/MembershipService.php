@@ -268,7 +268,7 @@ class MembershipService
                         'email' => MemberValue::email($person['email'] ?? $user->email ?? null),
                         'phone' => MemberValue::phone($person['phone'] ?? null),
                         'gender' => $person['gender'] ?? null,
-                    ], fn ($v) => $v !== null && $v !== ''),
+                    ], fn ($v) => $v !== null && $v !== '') + (array) ($person['details'] ?? []),
                     'created_by' => $userId,
                     'updated_by' => $userId,
                 ]);

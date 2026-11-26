@@ -54,6 +54,83 @@ class OrderMembershipsTest extends TestCase
         $this->assertTrue($user->fresh()->hasRole('member'));
     }
 
+    public function test_school_details_given_when_registering_reach_the_member_record(): void
+    {
+        $organisation = $this->makeOrganisation();
+        $user = $this->makeUser();
+        // As the event module sends them: what the member completed at the school.
+        $details = ['school_records' => [['level' => 'icse', 'year' => 2003, 'class_left' => null, 'stream' => null]]];
+
+        $this->paidOrder($organisation, [['person' => 'Rahul Sen', 'email' => 'rahul@example.test', 'user_id' => $user->id, 'role' => 'registrant', 'approval' => 'together', 'member_details' => $details]], $user->id);
+
+        $record = Membership::query()->where('user_id', $user->id)->sole()->memberRecord;
+        $this->assertSame([['icse', 2003]], $record->schoolRecords->map(fn ($r) => [$r->level, $r->year])->all());
+    }
+
+    public function test_a_donation_with_the_membership_when_the_organisation_offers_one(): void
+    {
+        $organisation = $this->makeOrganisation();
+        $user = $this->makeUser();
+        $this->membershipProduct($organisation);
+        $donation = Product::create(['organisation_id' => $organisation->id, 'name' => 'Donation', 'type' => 'donation', 'kind' => 'virtual', 'price' => 1, 'currency' => 'INR', 'custom_amount' => true, 'min_amount' => 1]);
+
+        // Not offered with every order: refused.
+        $this->actingAs($user)->postJson('/community/membership/'.$organisation->uid.'/pay', ['donation' => 100])
+            ->assertStatus(422)->assertJsonPath('message', 'Donations are not taken with the membership.');
+
+        $donation->setMetaValue(Product::META_OFFER_WITH_EVERY_ORDER, '1');
+        // Within the donation's limits: no negative, and not under its minimum (₹50 here).
+        $donation->update(['min_amount' => 50]);
+        $this->actingAs($user)->postJson('/community/membership/'.$organisation->uid.'/pay', ['donation' => -5])->assertStatus(422)->assertJsonValidationErrors('donation');
+        $this->actingAs($user)->postJson('/community/membership/'.$organisation->uid.'/pay', ['donation' => 20])
+            ->assertStatus(422)->assertJsonPath('errors.donation.0', 'A donation is ₹50 or more (or leave it empty).');
+        $this->actingAs($user)->postJson('/community/membership/'.$organisation->uid.'/pay', ['donation' => 100])->assertOk();
+        $order = \Iquesters\Commerce\Models\Order::query()->sole();
+        $this->assertSame(['400.00', ['membership', 'donation']], [$order->total, $order->lines->pluck('product_type')->all()]);
+    }
+
+    public function test_a_membership_being_paid_shows_instead_of_apply(): void
+    {
+        $this->seed(\Iquesters\Community\Database\Seeders\CommunitySeeder::class);
+        // Single mode: the default organisation (the seeder's).
+        $organisation = \Iquesters\Community\Support\OrganisationResolver::default();
+        $user = $this->makeUser();
+        $product = $this->membershipProduct($organisation);
+        $card = app(\Iquesters\Community\Dashboard\MembershipCard::class);
+        $this->assertStringContainsString('Apply for membership', (string) $card->render($user));
+
+        // Registered for an event with the membership; not paid yet.
+        $orders = app(OrderService::class);
+        $order = $orders->create($organisation, ['user_id' => $user->id, 'name' => 'Rahul'], [['product' => $product, 'meta' => ['person' => 'Rahul', 'user_id' => $user->id, 'role' => 'registrant', 'approval' => 'together']]]);
+        $html = (string) $card->render($user);
+        $this->assertStringContainsString('is in your order', $html);
+        $this->assertStringContainsString('waiting for your payment', $html);
+        $this->assertStringNotContainsString('Apply for membership', $html);
+        // The membership page: no application form meanwhile.
+        $this->actingAs($user)->get('/community/membership?organisation='.$organisation->uid)->assertOk()
+            ->assertSee('No need to apply')->assertSee($order->reference);
+
+        // Multiple organisations: no "Apply" next to the membership being paid either.
+        \Iquesters\Foundation\Support\ConfProvider::from(\Iquesters\Community\Enums\Module::COMMUNITY)->update(['organisation_mode' => 'multiple']);
+        \Iquesters\Foundation\Support\ConfProvider::forget();
+        $html = (string) $card->render($user);
+        $this->assertStringContainsString('is in your order', $html);
+        $this->assertStringNotContainsString('Apply for membership', $html);
+        \Iquesters\Foundation\Support\ConfProvider::from(\Iquesters\Community\Enums\Module::COMMUNITY)->update(['organisation_mode' => 'single']);
+        \Iquesters\Foundation\Support\ConfProvider::forget();
+
+        // A guest's membership (their email on the line) counts too.
+        $guest = $this->makeUser();
+        $orders->create($organisation, ['user_id' => $user->id, 'name' => 'Rahul'], [['product' => $product, 'meta' => ['person' => 'Priya', 'email' => mb_strtoupper($guest->email), 'role' => 'guest']]]);
+        $this->assertStringContainsString('is in your order', (string) $card->render($guest));
+
+        // Paid: the membership itself.
+        $orders->markPaid($order, 'Verified', 1);
+        $html = (string) $card->render($user->fresh());
+        $this->assertStringNotContainsString('is in your order', $html);
+        $this->assertSame(Membership::STATUS_APPROVED, Membership::query()->where('user_id', $user->id)->sole()->status);
+    }
+
     public function test_separate_leaves_the_application_for_an_admin(): void
     {
         $organisation = $this->makeOrganisation();

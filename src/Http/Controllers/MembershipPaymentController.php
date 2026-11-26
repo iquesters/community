@@ -16,9 +16,17 @@ class MembershipPaymentController extends Controller
     {
         abort_unless(MembershipPurchase::available(), 404);
         $organisation = Organisation::query()->where('uid', $uid)->where('status', 'active')->firstOrFail();
+        // Within the donation product's limits (₹1 or more when it sets none).
+        $offered = MembershipPurchase::donation($organisation);
+        $limits = $offered && method_exists($offered, 'amountLimits') ? $offered->amountLimits() : ['min' => 1, 'max' => null];
+        $text = $offered && method_exists($offered, 'amountLimitsText') ? $offered->amountLimitsText() : '₹1 or more';
+        $donation = (float) ($request->validate(
+            ['donation' => ['nullable', 'numeric', 'min:'.$limits['min'], 'max:'.($limits['max'] ?? 10000000)]],
+            ['donation.min' => "A donation is {$text} (or leave it empty).", 'donation.max' => "A donation is {$text}."],
+        )['donation'] ?? 0);
 
         try {
-            $order = MembershipPurchase::buy($request->user(), $organisation);
+            $order = MembershipPurchase::buy($request->user(), $organisation, $donation);
         } catch (\DomainException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {

@@ -9,6 +9,7 @@ use Iquesters\Community\Models\Membership;
 use Iquesters\Community\Support\AdminMemberships;
 use Iquesters\Community\Support\CommunityAccess;
 use Iquesters\Community\Support\DirectoryFields;
+use Iquesters\Community\Support\MembershipPurchase;
 use Iquesters\Community\Support\OrganisationResolver;
 
 /**
@@ -41,17 +42,22 @@ class MembershipCard
 
         $canApply = (bool) DirectoryFields::conf()->self_registration && OrganisationResolver::available();
         $multiple = OrganisationResolver::isMultiple();
+        // A membership already in an order that isn't paid yet (e.g. with an event registration).
+        $inOrder = MembershipPurchase::inOpenOrder($user);
         // Single mode: one organisation, so once there is a membership there is nothing more to apply for.
-        $offerApply = $canApply && ($multiple || $memberships->isEmpty()
+        // While a membership is being paid there's nothing to apply for (in multiple mode too: no
+        // "Join as a member" next to the one being paid; other organisations are on the Membership page).
+        $offerApply = $canApply && ! $inOrder && ($multiple || $memberships->isEmpty()
             || $memberships->first()->status === Membership::STATUS_REJECTED);
 
-        if ($memberships->isEmpty() && ! $offerApply) {
+        if ($memberships->isEmpty() && ! $inOrder && ! $offerApply) {
             return null;
         }
 
         return view('community::dashboard.membership-card', [
             'memberships' => $memberships,
             'offerApply' => $offerApply,
+            'inOrder' => $inOrder,
             'multiple' => $multiple,
             'memberLabel' => (string) DirectoryFields::conf()->member_label,
         ])->render();

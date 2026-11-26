@@ -8,7 +8,8 @@
 @php
     $status = $membership?->status;
     // The form shows for a first application, one on hold (send it again), or after a rejection (apply again).
-    $showForm = $organisation && (! $membership || in_array($status, [Membership::STATUS_ON_HOLD, Membership::STATUS_REJECTED], true));
+    // Not while their membership is in an order being paid (e.g. with an event registration).
+    $showForm = $organisation && empty($inOrder) && (! $membership || in_array($status, [Membership::STATUS_ON_HOLD, Membership::STATUS_REJECTED], true));
     $alert = [
         Membership::STATUS_APPLIED => ['info', 'fa-hourglass-half', 'Your application is waiting for a decision.', 'Application sent'],
         Membership::STATUS_ON_HOLD => ['warning', 'fa-circle-question', 'An administrator needs more from you. Update your application below and send it again.', 'More details needed'],
@@ -42,6 +43,15 @@
             </div>
         @elseif (! $organisation)
             <div class="alert alert-warning small mb-0">Applications aren't open yet. Please check back later.</div>
+        @endif
+
+        @if (! empty($inOrder))
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="fs-6 mb-1">No need to apply</h6>
+                    @include('community::membership.in-order', ['inOrder' => $inOrder, 'bordered' => false, 'return' => '/community/membership?organisation='.$organisation->uid])
+                </div>
+            </div>
         @endif
 
         {{-- Where the application is (not a flash message: it stays until the status changes). --}}

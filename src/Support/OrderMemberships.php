@@ -61,8 +61,13 @@ class OrderMemberships
             'email' => MemberValue::email($meta['email'] ?? ($isRegistrant ? $order->buyer_email : null)),
             'phone' => MemberValue::phone($meta['phone'] ?? ($isRegistrant ? $order->buyer_phone : null)),
             'gender' => self::gender($meta['gender'] ?? null),
+            // What they gave when registering (e.g. their school records, from an event).
+            'details' => (array) ($meta['member_details'] ?? []),
         ];
-        $approve = ($meta['approval'] ?? 'separate') === 'together';
+        // Community's setting, unless the line says (e.g. buying the membership alone: separate).
+        $approve = isset($meta['approval'])
+            ? $meta['approval'] === 'together'
+            : (bool) DirectoryFields::conf()->approve_paid_memberships;
         $adminId = (int) ($order->updated_by ?? 0);
         $note = 'Paid: order '.$order->reference;
 

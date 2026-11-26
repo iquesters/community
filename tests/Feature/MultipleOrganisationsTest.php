@@ -37,4 +37,17 @@ class MultipleOrganisationsTest extends TestCase
             ->assertSee('Apply to TTV Alumni')
             ->assertSee('id="community-membership-application-'.strtolower($ttv->uid).'"', false);
     }
+
+    public function test_the_school_they_came_through_is_already_chosen(): void
+    {
+        $ttv = $this->makeOrganisation('TTV Alumni');
+        $this->makeOrganisation('Second School');
+        // E.g. they opened TTV's public event page, then signed up.
+        app(\Iquesters\Organisation\Support\OrganisationContext::class)->rememberVisit($ttv);
+        $this->actingAs($this->makeUser('user'));
+
+        $this->get('/community/membership')->assertOk()
+            ->assertSee('Apply to TTV Alumni')
+            ->assertDontSee('id="'.CommunityForms::ORGANISATION_CHOICE.'"', false);
+    }
 }

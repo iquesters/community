@@ -21,7 +21,18 @@
                     {{ $pending->status === 'under_review' ? 'Payment under review' : 'Pay '.$pending->reference }}
                 </a>
             @else
-                @include('userinterface::components.form', ['id' => \Iquesters\Community\Support\CommunityForms::MEMBERSHIP_PAY, 'entity_uid' => $organisation->uid, 'formData' => ''])
+                {{-- With an optional donation when the organisation offers one with every paid order. --}}
+                @php($offered = \Iquesters\Community\Support\MembershipPurchase::donation($organisation))
+                @if ($offered && method_exists($offered, 'amountLimitsText'))
+                    <div class="text-muted w-100">A donation is optional: {{ $offered->amountLimitsText() }}.</div>
+                @endif
+                @include('userinterface::components.form', [
+                    'id' => \Iquesters\Community\Support\MembershipPurchase::donation($organisation)
+                        ? \Iquesters\Community\Support\CommunityForms::MEMBERSHIP_PAY_DONATION
+                        : \Iquesters\Community\Support\CommunityForms::MEMBERSHIP_PAY,
+                    'entity_uid' => $organisation->uid,
+                    'formData' => '',
+                ])
             @endif
         </div>
     </div>

@@ -18,6 +18,7 @@ use Iquesters\Community\Support\ApplicationForm;
 use Iquesters\Community\Support\CommunityAccess;
 use Iquesters\Community\Support\DirectoryFields;
 use Iquesters\Community\Support\DirectoryTable;
+use Iquesters\Community\Support\MembershipPurchase;
 use Iquesters\Community\Support\OrganisationResolver;
 use Iquesters\Community\Support\ProofFields;
 use Iquesters\Community\Support\SchoolLevels;
@@ -42,6 +43,8 @@ class ApplicationController extends Controller
         AdminMemberships::ensureFor($request->user());
 
         $organisation = $this->organisation($request->query('organisation'))
+            // Came through an organisation's public page or event (e.g. signed up from an event link): that one.
+            ?? $this->organisation(OrganisationResolver::cameFrom()?->uid)
             // Multiple mode without a choice: the organisation they work in (header switcher),
             // else the one they are a member of, if any.
             ?? $this->organisation(OrganisationResolver::context()?->uid)
@@ -66,6 +69,8 @@ class ApplicationController extends Controller
 
         return view('community::applications.apply', [
             'organisation' => $organisation,
+            // Already being paid (e.g. with an event registration): no application meanwhile.
+            'inOrder' => $organisation && (! $membership || $rejected) ? MembershipPurchase::inOpenOrder($request->user(), $organisation) : null,
             'organisations' => OrganisationResolver::isMultiple() ? OrganisationResolver::choices() : collect(),
             'membership' => $membership?->load('proofs', 'histories'),
             'formId' => ApplicationForm::ensureFor($organisation),

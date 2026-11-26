@@ -21,6 +21,53 @@ class MembershipPurchase
 
     private const SERVICE = 'Iquesters\\Commerce\\Services\\OrderService';
 
+    /** The donation offered with the membership (the organisation's "offer with every paid order"), if any. */
+    public static function donation(?Organisation $organisation)
+    {
+        $product = self::PRODUCT;
+
+        return $organisation && self::available() && method_exists($product, 'donationForEveryOrder')
+            ? $product::donationForEveryOrder((int) $organisation->id)
+            : null;
+    }
+
+    private const LINE = 'Iquesters\Commerce\Models\OrderLine';
+
+    /**
+     * A membership of theirs already in an order that isn't paid yet (e.g.
+     * registered for an event with the membership, payment sent or due): the
+     * line for them (by their account, or their email on a guest's line), with
+     * its order. They needn't apply meanwhile; once paid, OrderMemberships
+     * makes the membership.
+     *
+     * @return array{order: object, line: object}|null
+     */
+    public static function inOpenOrder(Authenticatable $user, ?Organisation $organisation = null): ?array
+    {
+        if (! self::available()) {
+            return null;
+        }
+        $lineClass = self::LINE;
+        $userId = (int) $user->getAuthIdentifier();
+        $email = mb_strtolower(trim((string) ($user->email ?? '')));
+
+        $line = $lineClass::query()
+            ->where('product_type', 'membership')
+            ->whereHas('order', fn ($q) => $q->whereIn('status', ['awaiting_payment', 'under_review', 'rejected'])
+                ->when($organisation, fn ($q) => $q->where('organisation_id', $organisation->id)))
+            ->with('order.organisation')
+            ->latest('id')
+            ->get()
+            ->first(function ($line) use ($userId, $email) {
+                $meta = (array) $line->meta;
+
+                return ((int) ($meta['user_id'] ?? 0) === $userId)
+                    || ($email !== '' && mb_strtolower((string) ($meta['email'] ?? '')) === $email);
+            });
+
+        return $line ? ['order' => $line->order, 'line' => $line] : null;
+    }
+
     public static function available(): bool
     {
         return class_exists(self::SERVICE);
@@ -71,7 +118,7 @@ class MembershipPurchase
     /**
      * @throws \DomainException
      */
-    public static function buy(Authenticatable $user, Organisation $organisation)
+    public static function buy(Authenticatable $user, Organisation $organisation, float $donation = 0)
     {
         $product = self::product($organisation);
         if (! $product) {
@@ -84,12 +131,7 @@ class MembershipPurchase
             return $pending;
         }
 
-        return app(self::SERVICE)->create($organisation, [
-            'user_id' => $user->getAuthIdentifier(),
-            'name' => $user->name ?? null,
-            'email' => $user->email ?? null,
-            'phone' => $user->phone ?? null,
-        ], [[
+        $items = [[
             'product' => $product,
             'meta' => array_filter([
                 'person' => $user->name ?? null,
@@ -100,6 +142,21 @@ class MembershipPurchase
                 // Paying doesn't approve an application: an admin decides it.
                 'approval' => 'separate',
             ], fn ($v) => $v !== null && $v !== ''),
-        ]], ['prefix' => 'MEM', 'source' => 'membership']);
+        ]];
+        // An optional donation, when the organisation offers one with every paid order.
+        if ($donation > 0) {
+            $donationProduct = self::donation($organisation);
+            if (! $donationProduct) {
+                throw new \DomainException('Donations are not taken with the membership.');
+            }
+            $items[] = ['product' => $donationProduct, 'amount' => $donation];
+        }
+
+        return app(self::SERVICE)->create($organisation, [
+            'user_id' => $user->getAuthIdentifier(),
+            'name' => $user->name ?? null,
+            'email' => $user->email ?? null,
+            'phone' => $user->phone ?? null,
+        ], $items, ['prefix' => 'MEM', 'source' => 'membership']);
     }
 }
