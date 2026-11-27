@@ -34,6 +34,9 @@ class CommunityServiceProvider extends BaseServiceProvider
     {
         parent::boot();
 
+        // Its messages (membership approved), when notifications is installed.
+        \Iquesters\Community\Support\CommunityNotifications::register();
+
         // People uploaded from a school's records become members when they sign in
         // with a matching verified email or phone, or verify it (AutoMembership).
         Event::listen(Login::class, fn (Login $event) => AutoMembership::check($event->user));

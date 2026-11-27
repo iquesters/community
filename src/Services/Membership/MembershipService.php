@@ -2,6 +2,7 @@
 
 namespace Iquesters\Community\Services\Membership;
 
+use Iquesters\Community\Support\CommunityNotifications;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
@@ -138,6 +139,7 @@ class MembershipService
         });
 
         static::logInfo('Membership approved', ['membership' => $membership->uid, 'admin_id' => $adminId, 'linked' => (bool) $linkRecordUid]);
+        CommunityNotifications::approved($membership->fresh());
 
         return $membership->fresh();
     }
@@ -231,6 +233,9 @@ class MembershipService
 
             return $membership;
         });
+        if ($membership) {
+            CommunityNotifications::approved($membership);
+        }
 
         if ($membership) {
             static::logInfo('Membership approved from a matching record', ['membership' => $membership->uid, 'user_id' => $userId]);

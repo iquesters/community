@@ -6,6 +6,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Iquesters\Community\Models\Membership;
+use Iquesters\Community\Models\MembershipPeriod;
 use Iquesters\Community\Support\AdminMemberships;
 use Iquesters\Community\Support\CommunityAccess;
 use Iquesters\Community\Support\DirectoryFields;
@@ -47,17 +48,33 @@ class MembershipCard
         // Single mode: one organisation, so once there is a membership there is nothing more to apply for.
         // While a membership is being paid there's nothing to apply for (in multiple mode too: no
         // "Join as a member" next to the one being paid; other organisations are on the Membership page).
-        $offerApply = $canApply && ! $inOrder && ($multiple || $memberships->isEmpty()
-            || $memberships->first()->status === Membership::STATUS_REJECTED);
+        // Multiple mode: "Join another organisation" only while there is one they haven't joined or applied to.
+        $joined = $memberships->where('status', '!=', Membership::STATUS_REJECTED)->pluck('organisation_id')->all();
+        $another = $multiple && OrganisationResolver::choices()->whereNotIn('id', $joined)->isNotEmpty();
+        $offerApply = $canApply && ! $inOrder && ($multiple ? $another : ($memberships->isEmpty()
+            || $memberships->first()->status === Membership::STATUS_REJECTED));
 
         if ($memberships->isEmpty() && ! $inOrder && ! $offerApply) {
             return null;
         }
 
+        // The paid period of each membership (e.g. Membership 2027, 1 Jan – 31 Dec 2027): the current one, else the latest.
+        $periods = $memberships->mapWithKeys(fn (Membership $m) => [$m->id => MembershipPeriod::query()
+            ->where('membership_id', $m->id)->where('status', MembershipPeriod::STATUS_ACTIVE)
+            ->orderByRaw('case when valid_until is null or valid_until >= ? then 0 else 1 end', [now()->toDateString()])
+            ->orderByDesc('valid_until')->first()]);
+        // What was bought (the commerce product's name, e.g. "Membership 2027").
+        $product = 'Iquesters\Commerce\Models\Product';
+        $productNames = class_exists($product)
+            ? $product::query()->whereIn('id', $periods->filter()->pluck('product_id')->filter()->unique()->all())->pluck('name', 'id')
+            : collect();
+
         return view('community::dashboard.membership-card', [
             'memberships' => $memberships,
             'offerApply' => $offerApply,
             'inOrder' => $inOrder,
+            'periods' => $periods,
+            'productNames' => $productNames,
             'multiple' => $multiple,
             'memberLabel' => (string) DirectoryFields::conf()->member_label,
         ])->render();
