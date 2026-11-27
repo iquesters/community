@@ -24,6 +24,17 @@
                     <i class="fas fa-fw {{ $icon }} text-{{ $color }}"></i>
                     @if ($multiple) <span class="fw-semibold">{{ $membership->organisation?->name }}:</span> @endif
                     {{ $text }}
+                    {{-- How long it lasts (a paid period, e.g. Membership 2027). --}}
+                    @if ($period = ($periods[$membership->id] ?? null))
+                        <div class="text-muted ms-4">
+                            {{ $productNames[$period->product_id] ?? 'Membership' }}:
+                            @if ($period->valid_until)
+                                {{ $period->valid_from ? $period->valid_from->format('j M Y').' – ' : 'until ' }}{{ $period->valid_until->format('j M Y') }}{{ $period->valid_until->isPast() ? ' (ended)' : '' }}
+                            @else
+                                no end date
+                            @endif
+                        </div>
+                    @endif
                 </div>
                 @if ($action)
                     <a href="{{ route('community.membership', $multiple ? ['organisation' => $membership->organisation?->uid] : []) }}"

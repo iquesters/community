@@ -116,6 +116,7 @@
   },
   "suggest": {
     "iquesters/commerce": "Membership periods from paid orders (event registrations, paying the membership on its own)",
-    "iquesters/payment": "The pay page (UPI QR) for memberships"
+    "iquesters/payment": "The pay page (UPI QR) for memberships",
+    "iquesters/notifications": "Emails people when things happen (registration, payment, membership), with wording each organisation can edit"
   }
 }

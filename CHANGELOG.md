@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (emails, with iquesters/notifications)
+- **The member gets an email when their membership is approved** (by an admin, by a payment, or by matching the school's records), with its validity when paid. Declared by `CommunityNotifications`, sent by the notifications module (templates editable per organisation). Organisation admins' automatic memberships send nothing. Without that module nothing is sent (`suggest`).
+
+### Fixed (dashboard card)
+- **"Join another organisation" only when there is one**: in multiple-organisation mode the card offered *Apply for membership* even to a member of the only organisation. It now shows only while there is an active organisation they haven't joined or applied to.
+
+### Added (dashboard card)
+- **How long the membership lasts**: under *You're a member*, the paid period, e.g. *Membership 2027: 1 Jan 2027 – 31 Dec 2027* (the current one, else the latest; *(ended)* once past).
+
 ### Fixed
 - **Requires `iquesters/organisation` ^2.2**: the Membership page uses `OrganisationContext::cameFrom()` (new in organisation 2.2); with ^2.0 an older organisation could be installed and the page would fail.
 

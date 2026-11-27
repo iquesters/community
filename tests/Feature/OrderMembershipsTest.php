@@ -129,6 +129,19 @@ class OrderMembershipsTest extends TestCase
         $html = (string) $card->render($user->fresh());
         $this->assertStringNotContainsString('is in your order', $html);
         $this->assertSame(Membership::STATUS_APPROVED, Membership::query()->where('user_id', $user->id)->sole()->status);
+        // How long it lasts: the product's name and the period.
+        $this->assertStringContainsString('TTVians membership 2027:', $html);
+        $this->assertStringContainsString('1 Jan 2027 – 31 Dec 2027', $html);
+
+        // Multiple organisations: "Join another organisation" only while there is one they haven't joined.
+        \Iquesters\Foundation\Support\ConfProvider::from(\Iquesters\Community\Enums\Module::COMMUNITY)->update(['organisation_mode' => 'multiple']);
+        \Iquesters\Foundation\Support\ConfProvider::forget();
+        \Iquesters\Organisation\Models\Organisation::query()->where('id', '!=', $organisation->id)->update(['status' => 'inactive']);
+        $this->assertStringNotContainsString('Apply for membership', (string) $card->render($user->fresh()));
+        $this->makeOrganisation();
+        $this->assertStringContainsString('Apply for membership', (string) $card->render($user->fresh()));
+        \Iquesters\Foundation\Support\ConfProvider::from(\Iquesters\Community\Enums\Module::COMMUNITY)->update(['organisation_mode' => 'single']);
+        \Iquesters\Foundation\Support\ConfProvider::forget();
     }
 
     public function test_separate_leaves_the_application_for_an_admin(): void
