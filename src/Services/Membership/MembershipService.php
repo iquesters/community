@@ -97,6 +97,7 @@ class MembershipService
         });
 
         static::logInfo('Membership application sent', ['membership' => $membership->uid, 'user_id' => $userId]);
+        CommunityNotifications::applied($membership->fresh());
 
         return $membership->fresh();
     }
@@ -149,6 +150,7 @@ class MembershipService
     {
         $this->assertCanMove($membership, Membership::STATUS_ON_HOLD);
         DB::transaction(fn () => $this->decide($membership, Membership::STATUS_ON_HOLD, $note, $adminId));
+        CommunityNotifications::onHold($membership->fresh(), $note);
 
         return $membership->fresh();
     }
@@ -159,6 +161,7 @@ class MembershipService
         DB::transaction(fn () => $this->decide($membership, Membership::STATUS_REJECTED, $note, $adminId));
 
         static::logInfo('Membership rejected', ['membership' => $membership->uid, 'admin_id' => $adminId]);
+        CommunityNotifications::rejected($membership->fresh(), $note);
 
         return $membership->fresh();
     }
