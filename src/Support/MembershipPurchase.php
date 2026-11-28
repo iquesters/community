@@ -152,11 +152,15 @@ class MembershipPurchase
             $items[] = ['product' => $donationProduct, 'amount' => $donation];
         }
 
-        return app(self::SERVICE)->create($organisation, [
+        $order = app(self::SERVICE)->create($organisation, [
             'user_id' => $user->getAuthIdentifier(),
             'name' => $user->name ?? null,
             'email' => $user->email ?? null,
             'phone' => $user->phone ?? null,
         ], $items, ['prefix' => 'MEM', 'source' => 'membership']);
+        // Only for a new order: going back to an unpaid one sends nothing again.
+        CommunityNotifications::orderPlaced($order, $product, $user);
+
+        return $order;
     }
 }

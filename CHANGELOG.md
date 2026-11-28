@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (membership emails, with iquesters/notifications)
+- **Membership: please pay**: buying the membership on its own (Membership page) emails the order number, the amount and the pay link. Going back to an unpaid order sends nothing again.
+- **Application received**: when someone applies, or sends their application again after being asked for more.
+- **More details needed**: when an admin puts the application on hold, with the admin's note and a link to update it.
+- **Not approved**: when an admin rejects the application, with the reason.
+- With the existing *Membership approved* and the payment module's emails (details received, confirmed, not accepted), every step of the membership now sends an email. Each is a template the organisation can reword or switch off.
+
+## [1.2.0] - 2026-11-27
+
 ### Added (emails, with iquesters/notifications)
 - **The member gets an email when their membership is approved** (by an admin, by a payment, or by matching the school's records), with its validity when paid. Declared by `CommunityNotifications`, sent by the notifications module (templates editable per organisation). Organisation admins' automatic memberships send nothing. Without that module nothing is sent (`suggest`).
 
