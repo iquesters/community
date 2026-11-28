@@ -27,7 +27,7 @@ class EventMembershipDetails implements MembershipDetails
     {
         return [
             ['id' => 'school_level', 'label' => 'Studied up to', 'type' => 'select', 'required' => true, 'options' => SchoolLevels::options($event->organisation)],
-            ['id' => 'school_year', 'label' => 'Year of passing', 'type' => 'number', 'required' => true, 'min' => 1900, 'max' => (int) now()->year + 1, 'placeholder' => 'e.g. 2005'],
+            ['id' => 'school_year', 'label' => 'Year of passing', 'type' => 'number', 'required' => true, 'min' => SchoolLevels::yearRange($event->organisation)[0], 'max' => SchoolLevels::yearRange($event->organisation)[1], 'placeholder' => 'e.g. 2005'],
             ['id' => 'class_left', 'label' => 'Left after class', 'type' => 'number', 'min' => 1, 'max' => 12, 'required' => true, 'showWhen' => ['field' => 'school_level', 'equals' => SchoolLevels::LEFT]],
         ];
     }

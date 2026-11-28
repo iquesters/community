@@ -68,6 +68,15 @@ class SchoolLevels
         return null;
     }
 
+    /** The years one can have passed out or left: from the organisation's founding (its profile's "Founded (year)", else 1900) to this year. */
+    public static function yearRange(?Organisation $organisation): array
+    {
+        $now = (int) now()->year;
+        $founded = $organisation ? (int) $organisation->getMetaValue('founded_year') : 0;
+
+        return [$founded >= 1800 && $founded <= $now ? $founded : 1900, $now];
+    }
+
     /**
      * Check and normalise school records (application or upload).
      *
@@ -79,7 +88,8 @@ class SchoolLevels
         $levels = collect(self::for($organisation))->keyBy('key');
         $clean = [];
         $errors = [];
-        $maxYear = (int) now()->year + 1;
+        // No future years; none before the school was founded.
+        [$minYear, $maxYear] = self::yearRange($organisation);
 
         foreach (array_values($rows) as $i => $row) {
             $row = is_array($row) ? $row : [];
@@ -97,8 +107,10 @@ class SchoolLevels
 
                 continue;
             }
-            if (! $year || $year < 1900 || $year > $maxYear) {
-                $errors["{$at}.year"] = "Enter the year (1900–{$maxYear}).";
+            if (! $year || $year < $minYear || $year > $maxYear) {
+                $errors["{$at}.year"] = $year > $maxYear
+                    ? "The year can't be in the future (up to {$maxYear})."
+                    : "Enter the year ({$minYear}–{$maxYear}).";
 
                 continue;
             }

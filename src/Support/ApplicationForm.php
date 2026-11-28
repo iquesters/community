@@ -104,7 +104,7 @@ class ApplicationForm
                 'addLabel' => 'Add another',
                 'fields' => [
                     ['id' => 'level', 'label' => 'Completed', 'type' => 'select', 'required' => true, 'options' => [['value' => '', 'label' => 'Choose…'], ...SchoolLevels::options($organisation)]],
-                    ['id' => 'year', 'label' => 'Year (passed out or left)', 'type' => 'number', 'required' => true, 'min' => 1900, 'max' => (int) now()->year + 1],
+                    ['id' => 'year', 'label' => 'Year (passed out or left)', 'type' => 'number', 'required' => true, 'min' => SchoolLevels::yearRange($organisation)[0], 'max' => SchoolLevels::yearRange($organisation)[1]],
                     ['id' => 'class_left', 'label' => 'Class left after (only if you left early)', 'type' => 'number', 'min' => 1, 'max' => 12],
                     ['id' => 'stream', 'label' => 'Stream (e.g. Science)', 'type' => 'text', 'maxLength' => 64],
                 ],

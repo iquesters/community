@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (year of passing)
+- **The year someone passed out or left runs from the organisation's founding to this year**: no future years, none before the organisation's *Founded (year)* (its profile; 1900 when not set). On the membership application, the event's membership details and bulk uploads; the form fields show the same limits. `SchoolLevels::yearRange()`.
+
 ### Added (membership emails, with iquesters/notifications)
 - **Membership: please pay**: buying the membership on its own (Membership page) emails the order number, the amount and the pay link. Going back to an unpaid order sends nothing again.
 - **Application received**: when someone applies, or sends their application again after being asked for more.
